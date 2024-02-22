@@ -172,14 +172,22 @@ CONTAINS
 
         INTEGER(KIND = IKind) :: i !compteur
         REAL(KIND = RKind), DIMENSION(Nx) :: u_temp !profil de vitesse stocké temporairement
-
+        INTEGER :: upwind   !permet de maintenir la configuration upwind selon c
+        
+        !determine le sens upwind pour du/dt + c du/dx = 0
+        IF (c > 0) THEN
+            upwind = -1
+        ELSE
+            upwind = 1
+        END IF
+        
         !definition des conditions limites a gauche et a droite, inchangées
         u(1) = boundary_condition_left
         u(Nx) = boundary_condition_right
         
         !calcul du n+1
         DO i = 2, Nx-1
-            u_temp(i) = u(i) * (1 - c * dt / dx) + u(i-1) * (c * dt /dx)
+            u_temp(i) = u(i) * (1 + upwind * c * dt / dx) - u(i + upwind) * (upwind * c * dt /dx)
         END DO
 
         !assignation du n+1
@@ -214,7 +222,7 @@ IMPLICIT NONE
     CALL create_space_grid()
     
     !calcul du pas de temps à partir du CFL
-    dt = cfl * dx / c
+    dt = ABS(cfl * dx / c)
     
     !initalisation de la solution grâce aux conditions initiales
     CALL init_solution()
