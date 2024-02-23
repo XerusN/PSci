@@ -172,7 +172,7 @@ CONTAINS
         
         WRITE(11, *) 'TITLE = "ETAPE2"'
         WRITE(11, *) 'VARIABLES = "X", "Y", "U"'
-        WRITE(11, '(A, ES20.13, A, I4, A, I4, A)') 'ZONE T="', t, &
+        WRITE(11, '(1X, A, ES20.13, A, I4, A, I4, A)') 'ZONE T="', t, &
             '   seconds", I=', n_x, ', J=', n_y, ', DATAPACKING=POINT'
         
         !Ecriture pour chaque position
@@ -322,6 +322,8 @@ CONTAINS
                 u(i,j) = u_temp(i,j)
             END DO
         END DO
+        
+        
 
     END SUBROUTINE convection_diffusion_2D
     
