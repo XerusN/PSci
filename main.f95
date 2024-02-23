@@ -5,9 +5,6 @@ IMPLICIT NONE
     !definition des tailles des reels(RKind) et des entiers(IKind)
     INTEGER, PARAMETER :: RKind = SELECTED_REAL_KIND(10,200)
     INTEGER, PARAMETER :: IKind = SELECTED_INT_KIND(5)
-
-    !Constantes de dimension des tableaux
-    INTEGER, PARAMETER :: Nx = 201
     
     !Constante de taille pour le nom des fichiers
     INTEGER, PARAMETER :: StrLen = 40
@@ -19,7 +16,10 @@ IMPLICIT NONE
     
     
     !Variables d'entree
-
+    
+    !Taille du maillage spatial
+    INTEGER(KIND = IKind) :: n_x
+    
     !nombre d'itérations temporelles
     INTEGER(KIND = IKind) :: n_t
     
@@ -45,10 +45,10 @@ IMPLICIT NONE
     REAL(KIND = Rkind) :: boundary_condition_left, boundary_condition_right
     
     !definition de la vitesse [m/s] comme var globale, tableau de scalaire pour la partie 1, on ne stocke pas les itérations
-    REAL(KIND = RKind), DIMENSION(Nx) :: u
+    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: u
     
     !definition du maillage spatial, exprime les coordonnées en [m] de la case
-    REAL(KIND = RKind), DIMENSION(Nx) :: space_grid
+    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: space_grid
 
     !definition du pas spatial [m] et du pas de temps [s]
     REAL(KIND = RKind) :: dx, dt
@@ -72,6 +72,9 @@ CONTAINS
         !Saut des deux premieres lignes
         READ(10, *)
         READ(10, *)
+        
+        !Taille du maillage spatial
+        READ(10, *) n_x
         
         !longueur espace
         READ(10, *) l
@@ -116,7 +119,7 @@ CONTAINS
         
         
         !Ecriture pour chaque position
-        DO i = 1, Nx
+        DO i = 1, n_x
             WRITE(11, *) space_grid(i), u(i)
         END DO
         
@@ -135,12 +138,15 @@ CONTAINS
     IMPLICIT NONE
 
         INTEGER(KIND = IKind) :: i
-
+    
+        
+        ALLOCATE(space_grid(n_x))
+        
         !calcul du pas spatial
-        dx = l / (Nx - 1)
+        dx = l / (n_x - 1)
 
         !assignation des coordonnées
-        DO i = 1, Nx
+        DO i = 1, n_x
             space_grid(i) = dx * (i-1)
         END DO
 
@@ -155,8 +161,10 @@ CONTAINS
         
         INTEGER(KIND = IKind) :: i
         
+        ALLOCATE(u(n_x))
+        
         !Calcul pour chaque position
-        DO i= 1, Nx
+        DO i= 1, n_x
             u(i) = EXP(- ((space_grid(i) - x_0)/delta)**2)
         END DO
         
@@ -171,8 +179,10 @@ CONTAINS
     IMPLICIT NONE
 
         INTEGER(KIND = IKind) :: i !compteur
-        REAL(KIND = RKind), DIMENSION(Nx) :: u_temp !profil de vitesse stocké temporairement
+        REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: u_temp !profil de vitesse stocké temporairement
         INTEGER :: upwind   !permet de maintenir la configuration upwind selon c
+        
+        ALLOCATE(u_temp(n_x))
         
         !determine le sens upwind pour du/dt + c du/dx = 0
         IF (c > 0) THEN
@@ -183,17 +193,19 @@ CONTAINS
         
         !definition des conditions limites a gauche et a droite, inchangées
         u(1) = boundary_condition_left
-        u(Nx) = boundary_condition_right
+        u(n_x) = boundary_condition_right
         
         !calcul du n+1
-        DO i = 2, Nx-1
+        DO i = 2, n_x-1
             u_temp(i) = u(i) * (1 + upwind * c * dt / dx) - u(i + upwind) * (upwind * c * dt /dx)
         END DO
 
         !assignation du n+1
-        DO i = 2, Nx-1
+        DO i = 2, n_x-1
             u(i) = u_temp(i)
         END DO
+        
+        DEALLOCATE(u_temp)
 
     END SUBROUTINE convection_lineaire_1D
 
@@ -241,5 +253,8 @@ IMPLICIT NONE
     !Ecriture de la solutions à t_f
     str = 'output/final_solution.dat'
     CALL write_output_file(str)
+    
+    DEALLOCATE(space_grid)
+    DEALLOCATE(u)
 
 END PROGRAM main
