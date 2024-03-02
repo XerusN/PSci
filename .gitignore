@@ -3,3 +3,4 @@ global.mod
 *.png
 output/
 a.exe
+/debug

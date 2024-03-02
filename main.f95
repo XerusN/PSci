@@ -160,7 +160,7 @@ CONTAINS
         
         INTEGER(KIND = IKind), INTENT(IN) :: iteration
         
-        CHARACTER(LEN = StrLen) :: name, format_iteration
+        CHARACTER(LEN = StrLen) :: name
         INTEGER(KIND = RKind) :: i, j
         
         WRITE(name, '(I0)') iteration
@@ -187,6 +187,34 @@ CONTAINS
         CLOSE(11)
         
     END SUBROUTINE write_output_file
+    
+    
+    !maj Etape 2
+    !Permet de rapidement tester la valeur de certaines variables
+    SUBROUTINE Debug(iteration)
+    IMPLICIT NONE
+        
+        INTEGER(KIND = IKind), INTENT(IN) :: iteration
+        
+        CHARACTER(LEN = StrLen) :: name
+        INTEGER(KIND = RKind) :: i, j
+        
+        WRITE(name, '(I0)') iteration
+        name = 'debug/var' // TRIM(name) // '.dat'
+        
+        !Ouverture du fichier a ecrire
+        OPEN(11, FILE = name)
+        
+        
+        WRITE(11, *) 'case finale', space_grid(n_x, n_y)
+        WRITE(11, *) 'dx', dx, 'dy', dy
+        WRITE(11, *) 'n_x', n_x, 'n_y', n_y
+        
+        !Fermeture du fichier
+        CLOSE(11)
+        
+    END SUBROUTINE Debug
+    
         
     
     
@@ -253,6 +281,12 @@ CONTAINS
         
         CHARACTER(LEN = StrLen) :: name
         INTEGER(KIND = IKind) :: i
+        
+        !Nettoie le dossier output
+        CALL EXECUTE_COMMAND_LINE("rm ./output/*")
+        !Nettoie le dossier debug
+        CALL EXECUTE_COMMAND_LINE("rm ./debug/*")
+        
         
         t = 0
         
@@ -363,6 +397,10 @@ CONTAINS
             IF (MOD(i, frame) == 0) THEN
                 CALL write_output_file(i)
             END IF 
+            
+            !IF (i>=200 .AND. i <= 210) THEN
+            !    CALL debug(i)
+            !END IF
             
             IF (last_iteration .EQV. .TRUE.) THEN
                 EXIT
