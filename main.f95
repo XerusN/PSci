@@ -50,11 +50,11 @@ IMPLICIT NONE
     
     !structure qui contient les coordonnées en x et y d'un point du maillage
     TYPE COORDS
-        REAL(KIND = RKind) :: x, y
+        REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: x, y
     END TYPE
 
     !definition du maillage spatial, exprime les coordonnées en [m] de la case
-    TYPE(COORDS), DIMENSION(:, :), ALLOCATABLE :: space_grid
+    TYPE(COORDS) :: space_grid
     
     !Variable temporelle
     REAL(KIND = RKind) :: t
@@ -167,7 +167,6 @@ CONTAINS
         !Ouverture du fichier a ecrire
         OPEN(11, FILE = name)
         
-        
         WRITE(11, *) 'TITLE = "ETAPE2"'
         WRITE(11, *) 'VARIABLES = "X", "Y", "U", "V"'
         WRITE(11, '(1X, A, ES20.13, A, I4, A, I4, A)') 'ZONE T="', t, &
@@ -176,7 +175,7 @@ CONTAINS
         !Ecriture pour chaque position
         DO i = 1, n_x
             DO j = 1, n_y
-                WRITE(11, '(4(ES20.13, 1X))') space_grid(i, j)%x, space_grid(i, j)%y, u(i, j), v(i, j)
+                WRITE(11, '(4(ES20.13, 1X))') space_grid%x(i), space_grid%y(j), u(i, j), v(i, j)
             END DO
         END DO
         
@@ -204,7 +203,7 @@ CONTAINS
         OPEN(11, FILE = name)
         
         
-        WRITE(11, *) 'case finale', space_grid(n_x, n_y)
+        WRITE(11, *) 'case finale', space_grid%x(n_x), space_grid%y(n_y)
         WRITE(11, *) 'dx', dx, 'dy', dy
         WRITE(11, *) 'n_x', n_x, 'n_y', n_y
         
@@ -225,7 +224,8 @@ CONTAINS
         INTEGER(KIND = IKind) :: i, j
     
         
-        ALLOCATE(space_grid(n_x, n_y))
+        ALLOCATE(space_grid%x(n_x))
+        ALLOCATE(space_grid%y(n_y))
         
         !calcul du pas spatial en x
         dx = l_x / REAL(n_x - 1)
@@ -236,8 +236,8 @@ CONTAINS
         !assignation des coordonnées
         DO j = 1, n_y
             DO i = 1, n_x
-                space_grid(i,j)%x = dx * REAL(i-1)
-                space_grid(i,j)%y = dy * REAL(j-1) 
+                space_grid%x(i) = dx * REAL(i-1)
+                space_grid%y(j) = dy * REAL(j-1) 
             END DO
         END DO
     END SUBROUTINE create_space_grid
@@ -257,8 +257,8 @@ CONTAINS
         !Assignation pour chaque position
         DO i= 1, n_x
             DO j = 1, n_y
-                IF ((space_grid(i,j)%x >= x_min) .AND. (space_grid(i,j)%x <= x_max) .AND. &
-                    (space_grid(i,j)%y <= y_max) .AND. (space_grid(i,j)%y >= y_min)) THEN
+                IF ((space_grid%x(i) >= x_min) .AND. (space_grid%x(i) <= x_max) .AND. &
+                    (space_grid%y(j) <= y_max) .AND. (space_grid%y(j) >= y_min)) THEN
                     u(i, j) = u_in
                     v(i, j) = v_in
                 ELSE
@@ -389,16 +389,16 @@ CONTAINS
                 - u(i,j)*dt/dx*2.0*(REAL(upwind_x) - 0.5) - v(i,j)*dt/dy*2.0*(REAL(upwind_y) - 0.5)) &
                 + u(i-1,j)*dt*(viscosity/dx**2 + u(i,j)/dx*REAL(upwind_x)) &
                 + u(i,j-1)*dt*(viscosity/dy**2 + v(i,j)/dy*REAL(upwind_y)) &
-                + u(i+1,j)*dt*(viscosity/dx**2 - u(i,j)/dx*(1 - REAL(upwind_x))) &
-                + u(i,j+1)*dt*(viscosity/dy**2 - v(i,j)/dy*(1 - REAL(upwind_y)))
+                + u(i+1,j)*dt*(viscosity/dx**2 - u(i,j)/dx*REAL(1 - upwind_x)) &
+                + u(i,j+1)*dt*(viscosity/dy**2 - v(i,j)/dy*REAL(1 - upwind_y))
                 
                 !Calcul de v
                 v_temp(i,j) = v(i,j)*(1.0 - 2.0*viscosity*dt*(1.0/dx**2 + 1.0/dy**2) &
                 - u(i,j)*dt/dx*2.0*(REAL(upwind_x) - 0.5) - v(i,j)*dt/dy*2.0*(REAL(upwind_y) - 0.5)) &
                 + v(i-1,j)*dt*(viscosity/dx**2 + u(i,j)/dx*REAL(upwind_x)) &
                 + v(i,j-1)*dt*(viscosity/dy**2 + v(i,j)/dy*REAL(upwind_y)) &
-                + v(i+1,j)*dt*(viscosity/dx**2 - u(i,j)/dx*(1 - REAL(upwind_x))) &
-                + v(i,j+1)*dt*(viscosity/dy**2 - v(i,j)/dy*(1 - REAL(upwind_y)))
+                + v(i+1,j)*dt*(viscosity/dx**2 - u(i,j)/dx*REAL(1 - upwind_x)) &
+                + v(i,j+1)*dt*(viscosity/dy**2 - v(i,j)/dy*REAL(1 - upwind_y))
             END DO
         END DO
         
@@ -478,7 +478,8 @@ IMPLICIT NONE
     
     CALL resolution_loop()
     
-    DEALLOCATE(space_grid)
+    DEALLOCATE(space_grid%x)
+    DEALLOCATE(space_grid%y)
     DEALLOCATE(u)
     DEALLOCATE(v)
     

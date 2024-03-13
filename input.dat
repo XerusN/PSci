@@ -4,7 +4,7 @@
 81 81
 
 #n_t
-300
+200
 
 # l_x l_y
 2 2
@@ -24,7 +24,7 @@
 # y_min y_max
 0.5 1.0
 # u_in u_out v_in v_out
--2 1 -2 1
+2 1 2 1
 
 # boundary_condition_left
 1
