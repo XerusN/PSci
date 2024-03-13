@@ -318,14 +318,6 @@ CONTAINS
     IMPLICIT NONE
 
         INTEGER(KIND = IKind) :: i, j !compteur
-        INTEGER :: upwind   !permet de maintenir la configuration upwind selon c
-        
-        !determine le sens upwind pour du/dt + c du/dx = 0
-        IF (c > 0) THEN
-            upwind = -1
-        ELSE
-            upwind = 1
-        END IF
         
         !definition des conditions limites a gauche et a droite, inchangées
         u(1,:) = boundary_condition_left
