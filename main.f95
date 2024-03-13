@@ -20,38 +20,33 @@ IMPLICIT NONE
     !Taille du maillage spatial
     INTEGER(KIND = IKind) :: n_x, n_y
     
-    !nombre d'itérations temporelles
+    !nombre d'itérations temporelles imposé
     INTEGER(KIND = IKind) :: n_t
     
     !dimension spatiale du maillage [m]
     REAL(KIND = RKind) :: l_x, l_y
-
-    !vitesse de convection [m/s]
-    REAL(KIND = RKind) :: c
     
     !viscosité [m2/s]
-    REAL(KIND = RKind) :: viscosite
-
-    !temps total d'observation du phénomène [s]
-    REAL(KIND = RKind) :: t_f
+    REAL(KIND = RKind) :: viscosity
 
     !CFL nombre de courant adimensionnel en input, en x et y
-    REAL(KIND = RKind) :: cfl, cfl_x, cfl_y
+    REAL(KIND = RKind) :: cfl
 
     !Fo nombre de Fourier en x et y
-    REAL(KIND = RKind) :: fo_x, fo_y
+    REAL(KIND = RKind) :: fo
 
-    !Conditions initiales
-    REAL(KIND = RKind) :: x_max, x_min, y_max, y_min, u_in, u_out
+    !Conditions initiales pour la solution
+    REAL(KIND = RKind) :: x_max, x_min, y_max, y_min, u_in, u_out, v_in, v_out
 
     !conditions limites a gauche et a droite [m/s] (même unité que u)
     REAL(KIND = RKind) :: boundary_condition_left, boundary_condition_right
     REAL(KIND = RKind) :: boundary_condition_up, boundary_condition_down
     
-    !definition de la vitesse [m/s] comme var globale, tableau de scalaire pour la partie 1, on ne stocke pas les itérations
-    REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: u
+    !definition des composantes de la vitesse [m/s] comme vars globales, tableaux de scalaire pour la partie 3, on ne stocke pas les itérations
+    REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: u, v
+
     !tableau de stockage intermediaire
-    REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: u_temp
+    REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: u_temp, v_temp
     
     !structure qui contient les coordonnées en x et y d'un point du maillage
     TYPE COORDS
@@ -77,7 +72,7 @@ CONTAINS
     
 
 
-    !maj à l'Etape 2, 2D
+    !maj à l'Etape 3, 2D, retiré les variables plus utilisées
     SUBROUTINE read_input_file(name)
     IMPLICIT NONE
         
@@ -96,6 +91,12 @@ CONTAINS
         READ(10, *) n_x, n_y
         
         READ(10, *)
+
+        !Nombre d'itérations imposées
+        READ(10, *)
+        READ(10, *) n_t
+        
+        READ(10, *)
         
         !longueur espace
         READ(10, *)
@@ -103,24 +104,21 @@ CONTAINS
         
         READ(10, *)
         
-        !Temps de fin
-        READ(10, *)
-        READ(10, *) t_f
         !fréquence d'affichage
         READ(10, *)
         READ(10, *) frame
         
         READ(10, *)
         
-        !Vitesse de convection
-        READ(10, *)
-        READ(10, *) c
         !Viscosité
         READ(10, *)
-        READ(10, *) viscosite
+        READ(10, *) viscosity
         !CFL
         READ(10, *)
         READ(10, *) cfl
+        !Nombre de fourrier
+        READ(10, *)
+        READ(10, *) fo
         
         READ(10, *)
         
@@ -130,7 +128,7 @@ CONTAINS
         READ(10, *)
         READ(10, *) y_min, y_max
         READ(10, *)
-        READ(10, *) u_in, u_out
+        READ(10, *) u_in, u_out, v_in, v_out
         
         READ(10, *)
         
@@ -171,14 +169,14 @@ CONTAINS
         
         
         WRITE(11, *) 'TITLE = "ETAPE2"'
-        WRITE(11, *) 'VARIABLES = "X", "Y", "U"'
+        WRITE(11, *) 'VARIABLES = "X", "Y", "U", "V"'
         WRITE(11, '(1X, A, ES20.13, A, I4, A, I4, A)') 'ZONE T="', t, &
             '   seconds", I=', n_x, ', J=', n_y, ', DATAPACKING=POINT'
         
         !Ecriture pour chaque position
         DO i = 1, n_x
             DO j = 1, n_y
-                WRITE(11, '(3(ES20.13, 1X))') space_grid(i, j)%x, space_grid(i, j)%y, u(i, j)
+                WRITE(11, '(4(ES20.13, 1X))') space_grid(i, j)%x, space_grid(i, j)%y, u(i, j), v(i, j)
             END DO
         END DO
         
@@ -246,25 +244,26 @@ CONTAINS
     
     
     
-    !maj à l'Etape 2, 2D
-    !Initialisation aux conditions initiales
+    !maj à l'Etape 3, 2D
+    !Initialisation aux conditions initiales, elles s'appliquent aux deux composantes u et v
     SUBROUTINE init_solution()
     IMPLICIT NONE
         
         INTEGER(KIND = IKind) :: i, j
         
         ALLOCATE(u(n_x, n_y))
+        ALLOCATE(v(n_x, n_y))
         
-        
-        
-        !Calcul pour chaque position
+        !Assignation pour chaque position
         DO i= 1, n_x
             DO j = 1, n_y
                 IF ((space_grid(i,j)%x >= x_min) .AND. (space_grid(i,j)%x <= x_max) .AND. &
                     (space_grid(i,j)%y <= y_max) .AND. (space_grid(i,j)%y >= y_min)) THEN
                     u(i, j) = u_in
+                    v(i, j) = v_in
                 ELSE
                     u(i, j) = u_out
+                    v(i, j) = v_out
                 END IF
             END DO
         END DO
@@ -273,7 +272,7 @@ CONTAINS
     
     
     
-    !maj à l'étape 2, 2D
+    !maj à l'étape 3, 2D
     !Réalise toute les initialisations
     SUBROUTINE initialisation()
     
@@ -296,9 +295,6 @@ CONTAINS
         
         !création du maillage spatial
         CALL create_space_grid()
-        
-        !calcul du pas de temps à partir du CFL
-        dt = ABS(cfl * dx / c)
     
         !initalisation de la solution grâce aux conditions initiales
         CALL init_solution()
@@ -308,37 +304,101 @@ CONTAINS
         CALL write_output_file(i)
         
     END SUBROUTINE initialisation
+
+
+
+    !créé à l'étape 3
+    !calcul du pas de temps pour une itération, cfl imposé constant, mais dépend de u ou de v 
+    SUBROUTINE compute_time_step()
+
+    IMPLICIT NONE
+
+        INTEGER(KIND = IKIND) :: i, j
+        REAL(KIND = RKIND) :: dt_min, dt_temp
+
+        !On cherche le dt le plus contraignant, càd le plus petit
+
+        !initialisation du min en utilisant la condition du fourrier
+        dt_min = fo/viscosity*dx**2
+
+        !recherche des u_max, v_max
+        DO i = 1, n_x
+            DO j = 1, n_y
+                dt_temp = cfl*dx/ABS(u(i,j))     !calcul du minimum potentiel sur u
+
+                IF (dt_temp < dt_min) THEN
+                    dt_min = dt_temp
+                END IF
+
+                dt_temp = cfl*dy/ABS(v(i,j))     !calcul du minimum potentiel sur v
+
+                IF (dt_temp < dt_min) THEN
+                    dt_min = dt_temp
+                END IF
+            END DO
+        END DO
+        
+        dt = dt_min
+        
+    END SUBROUTINE compute_time_step
     
     
     
     !maj à l'Etape 2, 2D
     !calcul du profil de vitesse pour une itération temporelle
-    SUBROUTINE convection_diffusion_2D()
+    SUBROUTINE burgers_2D()
 
     IMPLICIT NONE
 
         INTEGER(KIND = IKind) :: i, j !compteur
+        INTEGER(KIND = IKIND) :: upwind_x, upwind_y     !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
         
-        !definition des conditions limites a gauche et a droite, inchangées
+        !Application des conditions limites sur u
         u(1,:) = boundary_condition_left
         u(n_x,:) = boundary_condition_right
         u(:,1) = boundary_condition_down
         u(:,n_y) = boundary_condition_up
-
-        !Calcul des CFL, pour cette étape ils sont égaux
-        cfl_x = cfl
-        cfl_y = cfl
-
-        !calcul des nombres de Fourier
-        fo_x = viscosite*dt/(dx**2)
-        fo_y = viscosite*dt/(dy**2)
+        
+        !Application des conditions limites sur v
+        v(1,:) = boundary_condition_left
+        v(n_x,:) = boundary_condition_right
+        v(:,1) = boundary_condition_down
+        v(:,n_y) = boundary_condition_up
+        
         
         !calcul du n+1
         DO j = 2, n_y-1
             DO i = 2, n_x-1
-                u_temp(i,j) = u(i,j)*(1 - dt*((dx**2*(2*viscosite + c*dy) + dy**2*(2*viscosite + c*dx))/(dx**2 * dy**2))) &
-                + u(i-1,j)*dt*((c*dx + viscosite)/(dx**2)) + u(i,j-1)*dt*((c*dy + viscosite)/(dy**2)) &
-                + u(i+1,j)*((viscosite*dt)/(dx**2)) + u(i,j+1)*((viscosite*dt)/(dy**2))
+                
+                !Ajustement du sens upwind pour u
+                IF (u(i, j) > 0) THEN
+                    upwind_x = 1
+                ELSE
+                    upwind_x = 0
+                END IF
+                
+                !Ajustement du sens upwind pour v
+                IF (v(i, j) > 0) THEN
+                    upwind_y = 1
+                ELSE
+                    upwind_y = 0
+                END IF
+                
+                !Calcul de u
+                u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0/dx**2 + 1.0/dy**2) &
+                - u(i,j)*dt/dx*2.0*(REAL(upwind_x) - 0.5) - v(i,j)*dt/dy*2.0*(REAL(upwind_y) - 0.5)) &
+                + u(i-1,j)*dt*(viscosity/dx**2 + u(i,j)/dx*REAL(upwind_x)) &
+                + u(i,j-1)*dt*(viscosity/dy**2 + v(i,j)/dy*REAL(upwind_y)) &
+                + u(i+1,j)*dt*(viscosity/dx**2 - u(i,j)/dx*(1 - REAL(upwind_x))) &
+                + u(i,j+1)*dt*(viscosity/dy**2 - v(i,j)/dy*(1 - REAL(upwind_y)))
+                
+                !Calcul de v
+                v_temp(i,j) = v(i,j)*(1.0 - 2.0*viscosity*dt*(1.0/dx**2 + 1.0/dy**2) &
+                - u(i,j)*dt/dx*2.0*(REAL(upwind_x) - 0.5) - v(i,j)*dt/dy*2.0*(REAL(upwind_y) - 0.5)) &
+                + v(i-1,j)*dt*(viscosity/dx**2 + u(i,j)/dx*REAL(upwind_x)) &
+                + v(i,j-1)*dt*(viscosity/dy**2 + v(i,j)/dy*REAL(upwind_y)) &
+                + v(i+1,j)*dt*(viscosity/dx**2 - u(i,j)/dx*(1 - REAL(upwind_x))) &
+                + v(i,j+1)*dt*(viscosity/dy**2 - v(i,j)/dy*(1 - REAL(upwind_y)))
             END DO
         END DO
         
@@ -346,42 +406,37 @@ CONTAINS
         DO j = 2, n_y-1
             DO i = 2, n_x-1
                 u(i,j) = u_temp(i,j)
+                v(i,j) = v_temp(i,j)
             END DO
         END DO
         
         
 
-    END SUBROUTINE convection_diffusion_2D
+    END SUBROUTINE burgers_2D
     
     
     
     !maj à l'étape 2, 2D
     !Réalise la boucle temporelle
-    SUBROUTINE boucle_resolution()
+    SUBROUTINE resolution_loop()
     
     IMPLICIT NONE
         
         INTEGER(KIND = IKind) :: i
-        LOGICAL :: last_iteration
         
         i = 0
         
         !Allocation du tableau permettant de stocker les valeurs intermediaires de calcul
         ALLOCATE(u_temp(n_x, n_y))
-        
-        !permet de savoir si on a atteint la dernière iteration
-        last_iteration = .FALSE.
+        ALLOCATE(v_temp(n_x, n_y))
         
         !Boucle temporelle du calcul
-        DO WHILE (t < t_f)
-            !verifie si on a atteint la dernière itération
-            IF (t + dt > t_f) THEN
-                dt = t_f - t
-                last_iteration = .TRUE.
-            END IF
+        DO WHILE (i < n_t)
+            
+            CALL compute_time_step()
             
             !appelle le calcul pour cette itération
-            CALL convection_diffusion_2D()
+            CALL burgers_2D()
             i = i + 1
             t = t + dt
             
@@ -394,14 +449,13 @@ CONTAINS
             !    CALL debug(i)
             !END IF
             
-            IF (last_iteration .EQV. .TRUE.) THEN
-                EXIT
-            END IF
+            !PRINT*, i
         END DO
         
         DEALLOCATE(u_temp)
+        DEALLOCATE(v_temp)
         
-    END SUBROUTINE boucle_resolution
+    END SUBROUTINE resolution_loop
     
     
     
@@ -422,9 +476,12 @@ IMPLICIT NONE
     
     CALL initialisation()
     
-    CALL boucle_resolution()
+    CALL resolution_loop()
     
     DEALLOCATE(space_grid)
     DEALLOCATE(u)
-
+    DEALLOCATE(v)
+    
+    PRINT*, n_t
+    
 END PROGRAM main
