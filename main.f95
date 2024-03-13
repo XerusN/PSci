@@ -283,9 +283,9 @@ CONTAINS
         INTEGER(KIND = IKind) :: i
         
         !Nettoie le dossier output
-        CALL EXECUTE_COMMAND_LINE("rm ./output/*")
+        CALL EXECUTE_COMMAND_LINE("rm ./output/*.dat")
         !Nettoie le dossier debug
-        CALL EXECUTE_COMMAND_LINE("rm ./debug/*")
+        CALL EXECUTE_COMMAND_LINE("rm ./debug/*.dat")
         
         
         t = 0
