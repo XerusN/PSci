@@ -354,16 +354,16 @@ CONTAINS
         INTEGER(KIND = IKIND) :: upwind_x, upwind_y     !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
         
         !Application des conditions limites sur u
-        u(1,:) = boundary_condition_left
-        u(n_x,:) = boundary_condition_right
-        u(:,1) = boundary_condition_down
-        u(:,n_y) = boundary_condition_up
+        u_temp(1,:) = boundary_condition_left
+        u_temp(n_x,:) = boundary_condition_right
+        u_temp(:,1) = boundary_condition_down
+        u_temp(:,n_y) = boundary_condition_up
         
         !Application des conditions limites sur v
-        v(1,:) = boundary_condition_left
-        v(n_x,:) = boundary_condition_right
-        v(:,1) = boundary_condition_down
-        v(:,n_y) = boundary_condition_up
+        v_temp(1,:) = boundary_condition_left
+        v_temp(n_x,:) = boundary_condition_right
+        v_temp(:,1) = boundary_condition_down
+        v_temp(:,n_y) = boundary_condition_up
         
         
         !calcul du n+1
@@ -403,12 +403,8 @@ CONTAINS
         END DO
         
         !assignation du n+1
-        DO j = 2, n_y-1
-            DO i = 2, n_x-1
-                u(i,j) = u_temp(i,j)
-                v(i,j) = v_temp(i,j)
-            END DO
-        END DO
+        u(:,:) = u_temp(:,:)
+        v(:,:) = v_temp(:,:)
         
         
 
