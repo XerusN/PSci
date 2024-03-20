@@ -33,8 +33,6 @@ IMPLICIT NONE
     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: p_vec
     !stockage temporaire de a
     REAL(KIND = RKind), DIMENSION(:,:), ALLOCATABLE :: a_loc
-
-    !tableau de stockage intermediaire
     
     !structure qui contient les coordonnées en x et y d'un point du maillage
     TYPE COORDS
@@ -248,7 +246,7 @@ CONTAINS
         
         
         DO k = 1, k_max
-            PRINT*, ((k-MOD(k-1, n_x))/n_x) + 1, MOD(k-1, n_x)+1
+            !PRINT*, ((k-MOD(k-1, n_x))/n_x) + 1, MOD(k-1, n_x)+1
             !les lignes où on a une condition limite ont juste 1 sur la diagonale
             IF ((MOD(k-1, n_x)+1 == 1) .OR. (MOD(k-1, n_x)+1 == n_x) .OR. &
                 (((k-MOD(k-1, n_x)-1)/n_x) + 1 == 1) .OR. (((k-MOD(k-1, n_x)-1)/n_x) + 1 == n_y)) THEN
@@ -330,21 +328,29 @@ CONTAINS
             
             DO j = i+1, k_max
                 pivot_loc = a_loc(j, i)*pivot
-                DO k = i+1, k_max
+                DO k = i, k_max
                     a_loc(j, k) = a_loc(j, k) - pivot_loc*a_loc(i, k)
                 END DO
                 b(j) = b(j) - pivot_loc*b(i)
             END DO
         END DO
-            
+        
+        DO i = 1, k_max
+            DO j = 1, k_max
+                IF ((ABS(a_loc(i, j)) > 0.001) .AND. (j<i)) THEN
+                    PRINT*, 'coeff non nuls en i = ', i, ' j = ', j, ' a = ', a_loc(i, j)
+                END IF
+            END DO
+        END DO
+        
+        
         p_vec(k_max) = b(k_max)/a_loc(k_max, k_max)
         DO i = k_max-1, 1, -1
-            pivot = 1.0/a(i,i)
             p_vec(i) = 0
-            DO k = i, k_max
+            DO k = i+1, k_max
                 p_vec(i) = p_vec(i) + a_loc(i, k)*p_vec(k)
             END DO
-            p_vec(i) = (b(i) - p_vec(i))*pivot
+            p_vec(i) = (b(i) - p_vec(i))/a(i,i)
         END DO
 
     END SUBROUTINE gauss_elimination
