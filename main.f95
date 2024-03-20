@@ -256,8 +256,8 @@ CONTAINS
                 !application de la CL à b
                 b(k) = p(MOD(k-1, n_x)+1, ((k-MOD(k-1, n_x)-1)/n_x) + 1)
 
-            ELSE !IF ((MOD(k-1, n_x)+1 == 2) .OR. (MOD(k-1, n_x)+1 == n_x - 1) .OR. &
-                !(((k-MOD(k-1, n_x)-1)/n_x) + 1 == 2) .OR. (((k-MOD(k-1, n_x)-1)/n_x) + 1 == n_y - 1)) THEN
+            ELSE IF ((MOD(k-1, n_x)+1 == 2) .OR. (MOD(k-1, n_x)+1 == n_x - 1) .OR. &
+                (((k-MOD(k-1, n_x)-1)/n_x) + 1 == 2) .OR. (((k-MOD(k-1, n_x)-1)/n_x) + 1 == n_y - 1)) THEN
                 !sinon on applique les coefficients de l'équation
                 a(k, k) = REAL(-2)*(inv_x_2 + inv_y_2)
                 a(k, k + 1) = inv_x_2
@@ -265,16 +265,16 @@ CONTAINS
                 a(k, k + n_x) = inv_y_2
                 a(k, k - n_x) = inv_y_2
                 
-            ! ELSE
-            !     a(k, k) = REAL(-4)*(inv_x_2 + inv_y_2)/3.0
-            !     a(k, k + 1) = inv_x_2/3.0
-            !     a(k, k - 1) = inv_x_2/3.0
-            !     a(k, k + n_x) = inv_y_2/3.0
-            !     a(k, k - n_x) = inv_y_2/3.0
-            !     a(k, k + 2) = inv_x_2/3.0
-            !     a(k, k - 2) = inv_x_2/3.0
-            !     a(k, k + 2*n_x) = inv_y_2/3.0
-            !     a(k, k - 2*n_x) = inv_y_2/3.0
+            ELSE
+                a(k, k) = REAL(-4)*(inv_x_2 + inv_y_2)/3.0
+                a(k, k + 1) = inv_x_2/3.0
+                a(k, k - 1) = inv_x_2/3.0
+                a(k, k + n_x) = inv_y_2/3.0
+                a(k, k - n_x) = inv_y_2/3.0
+                a(k, k + 2) = inv_x_2/3.0
+                a(k, k - 2) = inv_x_2/3.0
+                a(k, k + 2*n_x) = inv_y_2/3.0
+                a(k, k - 2*n_x) = inv_y_2/3.0
 
             END IF
 
