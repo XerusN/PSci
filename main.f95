@@ -337,6 +337,7 @@ CONTAINS
         
         a_loc(:,:) = a(:,:)
         
+        !Triangularisation
         DO i = 1, k_max-1
             pivot = a_loc(i, i)
             
@@ -349,15 +350,7 @@ CONTAINS
             END DO
         END DO
         
-        DO i = 1, k_max
-            DO j = 1, k_max
-                IF ((ABS(a_loc(i, j)) > 0.001) .AND. (j<i)) THEN
-                    PRINT*, 'coeff non nuls en i = ', i, ' j = ', j, ' a = ', a_loc(i, j)
-                END IF
-            END DO
-        END DO
-        
-        
+        !Resolution backward
         p_vec(k_max) = b(k_max)/a_loc(k_max, k_max)
         DO i = k_max-1, 1, -1
             p_vec(i) = b(i)
@@ -393,12 +386,13 @@ CONTAINS
     END SUBROUTINE norm_2
     
     
-    
+    !Methode de Jacobi (resolution iterative de systeme lineaire)
     SUBROUTINE jacobi_method()
     
     IMPLICIT NONE
         
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.00001
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.00001     !point d'arret de jacobi
+        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 100000       !Arret forcé de jacobi
         REAL(KIND = RKind) :: initial_norm, r_norm
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         
@@ -435,7 +429,10 @@ CONTAINS
             
             CALL norm_2(jacobi_r, r_norm)
             iteration = iteration + 1
-            PRINT*, r_norm
+            IF (iteration >= IterationMax) THEN
+                PRINT*, 'Nombre d iteration max de jacobi atteint (', IterationMax, ' )'
+                EXIT
+            END IF
             
         END DO
         
@@ -444,24 +441,18 @@ CONTAINS
     END SUBROUTINE jacobi_method
     
     
-    
+    !Resolution du probleme
     SUBROUTINE solve()
     
     IMPLICIT NONE
         
         INTEGER(KIND = IKind) :: i, k_max, j, k
         
-        DO i = 1, n_x
-            DO j = 1, n_y
-                p(i, j) = EXP(space_grid%x(i))*SIN(space_grid%y(j))
-            END DO
-        END DO
-        i = 10
-        CALL write_output_file(i)
-        
         p(:,:) = 0
         
         k_max = n_x*n_y
+        
+        !Resolution avec gauss
         CALL gauss_elimination(k_max)
         
         DO i = 1, n_x
@@ -473,7 +464,7 @@ CONTAINS
         i = 1
         CALL write_output_file(i)
         
-        
+        ! !resolution avec jacobi
         ! CALL jacobi_method()
         
         ! DO i = 1, n_x
@@ -490,6 +481,7 @@ CONTAINS
     END SUBROUTINE solve
     
     
+    !Solution analytique
     SUBROUTINE analytical_solving()
     
     IMPLICIT NONE
@@ -521,19 +513,7 @@ USE global
 
 IMPLICIT NONE
     
-    INTEGER(KIND = IKind) :: i, j
-    ! REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: test
-    ! REAL(KIND = RKind) :: norm
-    
-    ! ALLOCATE(test(3))
-    
-    ! test(1) = 3
-    ! test(2) = 2
-    ! test(3) = 1
-    
-    ! CALL norm_2(test, norm)
-    ! PRINT*, norm
-    ! DEALLOCATE(test)
+    !INTEGER(KIND = IKind) :: i, j
     
     CALL initialisation()
     
