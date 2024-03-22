@@ -30,7 +30,7 @@ IMPLICIT NONE
     !vecteur b de l'équation de poisson
     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: b
     !Stockage de p sous forme vectorielle
-    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: p_vec
+    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: p_vec, p_vec_temp, jacobi_r
     !stockage temporaire de a
     REAL(KIND = RKind), DIMENSION(:,:), ALLOCATABLE :: a_loc
     
@@ -203,6 +203,8 @@ CONTAINS
         ALLOCATE(a_loc(k_max, k_max))
         ALLOCATE(b(k_max))
         ALLOCATE(p_vec(k_max))
+        ALLOCATE(p_vec_temp(k_max))
+        ALLOCATE(jacobi_r(k_max))
 
         !Remplissage du vecteur b, on assigne les conditions limites après
         b(:) = 0
@@ -216,69 +218,69 @@ CONTAINS
         inv_y_2 = REAL(1)/(dy**2.0)
 
         
-        ! DO j = 1, n_y
-        !     DO i = 1, n_x
+        DO j = 1, n_y
+            DO i = 1, n_x
 
-        !         k = (j - 1)*n_x + i
+                k = (j - 1)*n_x + i
 
-        !         !les lignes où on a une condition limite ont juste 1 sur la diagonale
-        !         IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
+                !les lignes où on a une condition limite ont juste 1 sur la diagonale
+                IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
 
-        !             a(k, k) = 1
+                    a(k, k) = 1
 
-        !             !application de la CL à b
-        !             b(k) = p(i, j)
+                    !application de la CL à b
+                    b(k) = p(i, j)
 
-        !         ELSE 
-        !             !sinon on applique les coefficients de l'équation
-        !             a(k, k) = REAL(-2*(inv_x_2 + inv_y_2))
-        !             a(k, k + 1) = inv_x_2
-        !             a(k, k - 1) = inv_x_2
-        !             a(k, k + n_x) = inv_y_2
-        !             a(k, k - n_x) = inv_y_2
+                ELSE 
+                    !sinon on applique les coefficients de l'équation
+                    a(k, k) = REAL(-2*(inv_x_2 + inv_y_2))
+                    a(k, k + 1) = inv_x_2
+                    a(k, k - 1) = inv_x_2
+                    a(k, k + n_x) = inv_y_2
+                    a(k, k - n_x) = inv_y_2
 
-        !         END IF
+                END IF
 
                 
                 
-        !     END DO
-        ! END DO
-        
-        
-        DO k = 1, k_max
-            !PRINT*, ((k-MOD(k-1, n_x))/n_x) + 1, MOD(k-1, n_x)+1
-            !les lignes où on a une condition limite ont juste 1 sur la diagonale
-            IF ((MOD(k-1, n_x)+1 == 1) .OR. (MOD(k-1, n_x)+1 == n_x) .OR. &
-                (((k-MOD(k-1, n_x)-1)/n_x) + 1 == 1) .OR. (((k-MOD(k-1, n_x)-1)/n_x) + 1 == n_y)) THEN
-
-                a(k, k) = 1
-
-                !application de la CL à b
-                b(k) = p(MOD(k-1, n_x)+1, ((k-MOD(k-1, n_x)-1)/n_x) + 1)
-
-            ELSE IF ((MOD(k-1, n_x)+1 == 2) .OR. (MOD(k-1, n_x)+1 == n_x - 1) .OR. &
-                (((k-MOD(k-1, n_x)-1)/n_x) + 1 == 2) .OR. (((k-MOD(k-1, n_x)-1)/n_x) + 1 == n_y - 1)) THEN
-                !sinon on applique les coefficients de l'équation
-                a(k, k) = REAL(-2)*(inv_x_2 + inv_y_2)
-                a(k, k + 1) = inv_x_2
-                a(k, k - 1) = inv_x_2
-                a(k, k + n_x) = inv_y_2
-                a(k, k - n_x) = inv_y_2
-                
-            ELSE
-                a(k, k) = REAL(-4)*(inv_x_2 + inv_y_2)/3.0
-                a(k, k + 1) = inv_x_2/3.0
-                a(k, k - 1) = inv_x_2/3.0
-                a(k, k + n_x) = inv_y_2/3.0
-                a(k, k - n_x) = inv_y_2/3.0
-                a(k, k + 2) = inv_x_2/3.0
-                a(k, k - 2) = inv_x_2/3.0
-                a(k, k + 2*n_x) = inv_y_2/3.0
-                a(k, k - 2*n_x) = inv_y_2/3.0
-
-            END IF
-
+            END DO
         END DO
+        
+        
+        ! DO k = 1, k_max
+        !     !PRINT*, ((k-MOD(k-1, n_x))/n_x) + 1, MOD(k-1, n_x)+1
+        !     !les lignes où on a une condition limite ont juste 1 sur la diagonale
+        !     IF ((MOD(k-1, n_x)+1 == 1) .OR. (MOD(k-1, n_x)+1 == n_x) .OR. &
+        !         (((k-MOD(k-1, n_x)-1)/n_x) + 1 == 1) .OR. (((k-MOD(k-1, n_x)-1)/n_x) + 1 == n_y)) THEN
+
+        !         a(k, k) = 1
+
+        !         !application de la CL à b
+        !         b(k) = EXP(space_grid%x(MOD(k-1, n_x)+1))*SIN(space_grid%y(((k-MOD(k-1, n_x)-1)/n_x) + 1))
+
+        !     ELSE !IF ((MOD(k-1, n_x)+1 == 2) .OR. (MOD(k-1, n_x)+1 == n_x - 1) .OR. &
+        !         !(((k-MOD(k-1, n_x)-1)/n_x) + 1 == 2) .OR. (((k-MOD(k-1, n_x)-1)/n_x) + 1 == n_y - 1)) THEN
+        !         !sinon on applique les coefficients de l'équation
+        !         a(k, k) = REAL(-2)*(inv_x_2 + inv_y_2)
+        !         a(k, k + 1) = inv_x_2
+        !         a(k, k - 1) = inv_x_2
+        !         a(k, k + n_x) = inv_y_2
+        !         a(k, k - n_x) = inv_y_2
+                
+        !     ! ELSE
+        !     !     a(k, k) = REAL(-14)*(inv_x_2 + inv_y_2)/4.0
+        !     !     a(k, k + 1) = inv_x_2*2.0
+        !     !     a(k, k - 1) = inv_x_2*2.0
+        !     !     a(k, k + n_x) = inv_y_2*2.0
+        !     !     a(k, k - n_x) = inv_y_2*2.0
+        !     !     a(k, k + 2) = -inv_x_2/4.0
+        !     !     a(k, k - 2) = -inv_x_2/4.0
+        !     !     a(k, k + 2*n_x) = -inv_y_2/4.0
+        !     !     a(k, k - 2*n_x) = -inv_y_2/4.0
+
+        !     END IF
+
+        !END DO
         
         
     END SUBROUTINE matrix_fill
@@ -336,10 +338,10 @@ CONTAINS
         a_loc(:,:) = a(:,:)
         
         DO i = 1, k_max-1
-            pivot = 1.0/a_loc(i, i)
+            pivot = a_loc(i, i)
             
             DO j = i+1, k_max
-                pivot_loc = a_loc(j, i)*pivot
+                pivot_loc = a_loc(j, i)/pivot
                 DO k = i, k_max
                     a_loc(j, k) = a_loc(j, k) - pivot_loc*a_loc(i, k)
                 END DO
@@ -358,14 +360,88 @@ CONTAINS
         
         p_vec(k_max) = b(k_max)/a_loc(k_max, k_max)
         DO i = k_max-1, 1, -1
-            p_vec(i) = 0
-            DO k = i+1, k_max
-                p_vec(i) = p_vec(i) + a_loc(i, k)*p_vec(k)
+            p_vec(i) = b(i)
+            DO j = i+1, k_max
+                p_vec(i) = p_vec(i) - a_loc(i, j)*p_vec(j)
             END DO
-            p_vec(i) = (b(i) - p_vec(i))/a(i,i)
+            p_vec(i) = p_vec(i)/a_loc(i,i)
         END DO
 
     END SUBROUTINE gauss_elimination
+    
+    
+    
+    !Calcul la norme 2 d'un vecteur
+    SUBROUTINE norm_2(vec, norm)
+    
+    IMPLICIT NONE
+        
+        REAL(KIND = Rkind), DIMENSION(:), ALLOCATABLE :: vec
+        
+        INTEGER(KIND = IKIND) :: vec_size, i
+        REAL(KIND = RKIND) :: norm
+        
+        vec_size = SIZE(vec, 1)
+        
+        norm = 0
+        DO i = 1, vec_size
+            norm = norm + vec(i)**2
+        END DO
+        
+        norm = SQRT(norm)
+        
+    END SUBROUTINE norm_2
+    
+    
+    
+    SUBROUTINE jacobi_method()
+    
+    IMPLICIT NONE
+        
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.00001
+        REAL(KIND = RKind) :: initial_norm, r_norm
+        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        
+        !Tentative initiale
+        p_vec(:) = 0
+        p_vec_temp(:) = 0
+        
+        k_max = SIZE(p_vec)
+        
+        DO i = 1, k_max
+            jacobi_r(i) = - b(i)
+            DO j = 1, k_max
+                jacobi_r(i) = jacobi_r(i) + a(i, j)*p_vec(j)
+            END DO
+        END DO
+        CALL norm_2(jacobi_r, initial_norm)
+        r_norm = initial_norm
+        iteration = 0
+        
+        PRINT*, initial_norm
+        
+        DO WHILE (r_norm > RTol*initial_norm)
+            p_vec_temp(:) = p_vec(:)
+            DO i = 1, k_max
+                p_vec(i) = p_vec_temp(i) - jacobi_r(i)/a(i,i)
+            END DO
+            
+            DO i = 1, k_max
+                jacobi_r(i) = - b(i)
+                DO j = 1, k_max
+                    jacobi_r(i) = jacobi_r(i) + a(i, j)*p_vec(j)
+                END DO
+            END DO
+            
+            CALL norm_2(jacobi_r, r_norm)
+            iteration = iteration + 1
+            PRINT*, r_norm
+            
+        END DO
+        
+        PRINT*, 'Méthode de Jacobi : ', iteration, ' iterations'
+        
+    END SUBROUTINE jacobi_method
     
     
     
@@ -383,7 +459,7 @@ CONTAINS
         i = 10
         CALL write_output_file(i)
         
-        
+        p(:,:) = 0
         
         k_max = n_x*n_y
         CALL gauss_elimination(k_max)
@@ -397,7 +473,38 @@ CONTAINS
         i = 1
         CALL write_output_file(i)
         
+        
+        ! CALL jacobi_method()
+        
+        ! DO i = 1, n_x
+        !     DO j = 1, n_y
+        !         p(i, j) = p_vec((j-1)*n_x+i)
+        !     END DO
+        ! END DO
+        
+        ! i = 2
+        ! CALL write_output_file(i)
+        
+        
+        
     END SUBROUTINE solve
+    
+    
+    SUBROUTINE analytical_solving()
+    
+    IMPLICIT NONE
+        
+        INTEGER(KIND = IKind) :: i, k_max, j, k
+        
+        DO i = 1, n_x
+            DO j = 1, n_y
+                p(i, j) = EXP(space_grid%x(i))*SIN(space_grid%y(j))
+            END DO
+        END DO
+        i = 10
+        CALL write_output_file(i)
+        
+    END SUBROUTINE analytical_solving
     
     
 
@@ -414,11 +521,27 @@ USE global
 
 IMPLICIT NONE
     
-    INTEGER :: i
+    INTEGER(KIND = IKind) :: i, j
+    ! REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: test
+    ! REAL(KIND = RKind) :: norm
+    
+    ! ALLOCATE(test(3))
+    
+    ! test(1) = 3
+    ! test(2) = 2
+    ! test(3) = 1
+    
+    ! CALL norm_2(test, norm)
+    ! PRINT*, norm
+    ! DEALLOCATE(test)
     
     CALL initialisation()
     
+    CALL analytical_solving()
+    
     CALL solve()
+    
+    
     
     DEALLOCATE(space_grid%x)
     DEALLOCATE(space_grid%y)
@@ -427,6 +550,8 @@ IMPLICIT NONE
     DEALLOCATE(b)
     DEALLOCATE(p)
     DEALLOCATE(p_vec)
+    DEALLOCATE(p_vec_temp)
+    DEALLOCATE(jacobi_r)
     
         
 END PROGRAM main
