@@ -172,16 +172,16 @@ CONTAINS
 
         !Application des conditions limites, dès maintenant pour tracer la solution init
         !CL basse y = 0
-        p(:, 1) = 0   
+        p(:, 1) = 1 - 2*SINH(space_grid%x(:))
         
         !CL haute y = 1
-        p(:, n_y) = EXP(space_grid%x(:))*SIN(space_grid%y(n_y))
+        p(:, n_y) = EXP(space_grid%x(:)) - 2*SINH(space_grid%x(:))
 
         !CL gauche x = 0
-        p(1, :) = SIN(space_grid%y(:))
+        p(1, :) = 1
 
-        !CL droite
-        p(n_x, :) = EXP(space_grid%x(n_x))*SIN(space_grid%y(:))
+        !CL droite x = 1
+        p(n_x, :) = EXP(space_grid%y(:)) - 2*SINH(space_grid%x(n_x))
         
     END SUBROUTINE init_solution
     
@@ -201,13 +201,10 @@ CONTAINS
 
         ALLOCATE(a(k_max, k_max))
         ALLOCATE(a_loc(k_max, k_max))
-        ALLOCATE(b(k_max))
         ALLOCATE(p_vec(k_max))
         ALLOCATE(p_vec_temp(k_max))
         ALLOCATE(jacobi_r(k_max))
 
-        !Remplissage du vecteur b, on assigne les conditions limites après
-        b(:) = 0
 
         !Remplissage de la matrice A
         !initialisation
@@ -222,15 +219,13 @@ CONTAINS
             DO i = 1, n_x
 
                 k = (j - 1)*n_x + i
-
+                
                 !les lignes où on a une condition limite ont juste 1 sur la diagonale
                 IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
 
                     a(k, k) = 1
-
-                    !application de la CL à b
-                    b(k) = p(i, j)
-
+                    
+                    
                 ELSE 
                     !sinon on applique les coefficients de l'équation
                     a(k, k) = REAL(-2*(inv_x_2 + inv_y_2))
@@ -241,49 +236,60 @@ CONTAINS
 
                 END IF
 
-                
-                
             END DO
         END DO
         
         
-        ! DO k = 1, k_max
-        !     !PRINT*, ((k-MOD(k-1, n_x))/n_x) + 1, MOD(k-1, n_x)+1
-        !     !les lignes où on a une condition limite ont juste 1 sur la diagonale
-        !     IF ((MOD(k-1, n_x)+1 == 1) .OR. (MOD(k-1, n_x)+1 == n_x) .OR. &
-        !         (((k-MOD(k-1, n_x)-1)/n_x) + 1 == 1) .OR. (((k-MOD(k-1, n_x)-1)/n_x) + 1 == n_y)) THEN
-
-        !         a(k, k) = 1
-
-        !         !application de la CL à b
-        !         b(k) = EXP(space_grid%x(MOD(k-1, n_x)+1))*SIN(space_grid%y(((k-MOD(k-1, n_x)-1)/n_x) + 1))
-
-        !     ELSE !IF ((MOD(k-1, n_x)+1 == 2) .OR. (MOD(k-1, n_x)+1 == n_x - 1) .OR. &
-        !         !(((k-MOD(k-1, n_x)-1)/n_x) + 1 == 2) .OR. (((k-MOD(k-1, n_x)-1)/n_x) + 1 == n_y - 1)) THEN
-        !         !sinon on applique les coefficients de l'équation
-        !         a(k, k) = REAL(-2)*(inv_x_2 + inv_y_2)
-        !         a(k, k + 1) = inv_x_2
-        !         a(k, k - 1) = inv_x_2
-        !         a(k, k + n_x) = inv_y_2
-        !         a(k, k - n_x) = inv_y_2
-                
-        !     ! ELSE
-        !     !     a(k, k) = REAL(-14)*(inv_x_2 + inv_y_2)/4.0
-        !     !     a(k, k + 1) = inv_x_2*2.0
-        !     !     a(k, k - 1) = inv_x_2*2.0
-        !     !     a(k, k + n_x) = inv_y_2*2.0
-        !     !     a(k, k - n_x) = inv_y_2*2.0
-        !     !     a(k, k + 2) = -inv_x_2/4.0
-        !     !     a(k, k - 2) = -inv_x_2/4.0
-        !     !     a(k, k + 2*n_x) = -inv_y_2/4.0
-        !     !     a(k, k - 2*n_x) = -inv_y_2/4.0
-
-        !     END IF
-
-        !END DO
-        
-        
     END SUBROUTINE matrix_fill
+    
+    
+    !remplit le vecteur b
+    SUBROUTINE fill_b ()
+    
+    IMPLICIT NONE
+        
+        INTEGER(KIND = IKind) :: k_max, i, j, k
+        
+        k_max = n_x*n_y
+        ALLOCATE(b(k_max))
+        
+        
+        DO j = 1, n_y
+            DO i = 1, n_x
+
+                k = (j - 1)*n_x + i
+                IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
+
+                    !application de la CL à b
+                    !CL basse y = 0
+                    IF (j == 1) THEN
+                        b(k) = 1 - 2*SINH(space_grid%x(i))
+                    !CL haute y = 1
+                    ELSE IF (j == n_y) THEN
+                        b(k) = EXP(space_grid%x(i)) - 2*SINH(space_grid%x(i))
+                    !CL gauche x = 0
+                    ELSE IF (i == 1) THEN
+                        b(k) = 1
+                    !CL droite x = 1
+                    ELSE
+                        b(k) = EXP(space_grid%y(j)) - 2*SINH(space_grid%x(n_x))
+                    END IF
+                    
+                    
+                ELSE 
+                    
+                    !valeur de b pour tous les autres points
+                    b(k) = (space_grid%x(i)**2 + space_grid%y(j)**2)*EXP(space_grid%x(i)*space_grid%y(j))
+                    b(k) = b(k) - 2*SINH(space_grid%x(i))
+
+                END IF
+            END DO
+        END DO
+        
+        
+        
+        
+    END SUBROUTINE fill_b
     
     
     !maj à l'étape 3, 2D
@@ -314,10 +320,15 @@ CONTAINS
 
         !Remplissage des matrices de l'equation
         CALL matrix_fill()
+        CALL fill_b()
         
         i = 0
         !Ecriture de la solution initiale
         CALL write_output_file(i)
+        
+        ! i = -3
+        ! !Ecriture de la solution initiale
+        ! CALL write_output_file(i)
         
     END SUBROUTINE initialisation
     
@@ -333,32 +344,44 @@ CONTAINS
         INTEGER(KIND = IKind) :: k_max
         
         INTEGER(KIND = IKind) :: i, j, k !compteur
-        REAL(KIND = RKind) :: pivot, pivot_loc, test
+        REAL(KIND = RKind) :: pivot, pivot_loc, test, time1, time2
+        
+        CALL CPU_TIME(time1)
         
         a_loc(:,:) = a(:,:)
         
         !Triangularisation
         DO i = 1, k_max-1
             pivot = a_loc(i, i)
-            
             DO j = i+1, k_max
                 pivot_loc = a_loc(j, i)/pivot
-                DO k = i, k_max
-                    a_loc(j, k) = a_loc(j, k) - pivot_loc*a_loc(i, k)
-                END DO
+                a_loc(j, i:) = a_loc(j, i:) - pivot_loc*a_loc(i, i:)
                 b(j) = b(j) - pivot_loc*b(i)
             END DO
         END DO
         
+        
         !Resolution backward
         p_vec(k_max) = b(k_max)/a_loc(k_max, k_max)
         DO i = k_max-1, 1, -1
-            p_vec(i) = b(i)
-            DO j = i+1, k_max
-                p_vec(i) = p_vec(i) - a_loc(i, j)*p_vec(j)
-            END DO
-            p_vec(i) = p_vec(i)/a_loc(i,i)
+            p_vec(i) = (b(i) - SUM(a_loc(i, i+1:)*p_vec(i+1:)))/a_loc(i, i)
         END DO
+        
+        
+        DO i = 1, n_x
+            DO j = 1, n_y
+                p(i, j) = p_vec((j-1)*n_x+i)
+            END DO
+        END DO
+        
+        
+        i = -1
+        CALL write_output_file(i)
+        
+        
+        CALL CPU_TIME(time2)
+        
+        PRINT*, 'Gauss for a grid size of ', n_x, ' : ', time2 - time1, ' seconds'
 
     END SUBROUTINE gauss_elimination
     
@@ -376,10 +399,8 @@ CONTAINS
         
         vec_size = SIZE(vec, 1)
         
-        norm = 0
-        DO i = 1, vec_size
-            norm = norm + vec(i)**2
-        END DO
+        norm = SUM(vec(:)**2)
+        
         
         norm = SQRT(norm)
         
@@ -393,8 +414,10 @@ CONTAINS
         
         REAL(KIND = RKind), PARAMETER :: RTol = 0.00001     !point d'arret de jacobi
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 100000       !Arret forcé de jacobi
-        REAL(KIND = RKind) :: initial_norm, r_norm
+        REAL(KIND = RKind) :: initial_norm, r_norm, time1, time2
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        
+        CALL CPU_TIME(time1)
         
         !Tentative initiale
         p_vec(:) = 0
@@ -403,28 +426,24 @@ CONTAINS
         k_max = SIZE(p_vec)
         
         DO i = 1, k_max
-            jacobi_r(i) = - b(i)
-            DO j = 1, k_max
-                jacobi_r(i) = jacobi_r(i) + a(i, j)*p_vec(j)
-            END DO
+            jacobi_r(i) = SUM(a(i, :)*p_vec(:)) - b(i)
         END DO
+        
         CALL norm_2(jacobi_r, initial_norm)
         r_norm = initial_norm
         iteration = 0
         
-        PRINT*, initial_norm
-        
         DO WHILE (r_norm > RTol*initial_norm)
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
-                p_vec(i) = p_vec_temp(i) - jacobi_r(i)/a(i,i)
+                p_vec(i) = p_vec_temp(i) - jacobi_r(i)/a(i, i)
             END DO
+            !p_vec(:) = p_vec_temp(:) - jacobi_r(:)/a((/(/j, j/), j=1, k_max/))
             
-            DO i = 1, k_max
-                jacobi_r(i) = - b(i)
-                DO j = 1, k_max
-                    jacobi_r(i) = jacobi_r(i) + a(i, j)*p_vec(j)
-                END DO
+            
+            jacobi_r(:) = - b(:)
+            DO j = 1, k_max
+                jacobi_r(:) = jacobi_r(:) + a(:, j)*p_vec(j)
             END DO
             
             CALL norm_2(jacobi_r, r_norm)
@@ -434,9 +453,26 @@ CONTAINS
                 EXIT
             END IF
             
+            !permet d'écrire les guess itermediaires
+            IF (MOD(iteration, frame) == 0) THEN
+                DO i = 1, n_x
+                    DO j = 1, n_y
+                        p(i, j) = p_vec((j-1)*n_x+i)
+                    END DO
+                END DO
+                
+                CALL write_output_file(iteration)
+            END IF
+            
         END DO
         
-        PRINT*, 'Méthode de Jacobi : ', iteration, ' iterations'
+        CALL CPU_TIME(time2)
+        
+        CALL write_output_file(iteration)
+        
+        
+        
+        PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
         
     END SUBROUTINE jacobi_method
     
@@ -452,29 +488,17 @@ CONTAINS
         
         k_max = n_x*n_y
         
+        
+        !resolution avec jacobi
+        CALL jacobi_method()
+        
+        
         !Resolution avec gauss
         CALL gauss_elimination(k_max)
         
-        DO i = 1, n_x
-            DO j = 1, n_y
-                p(i, j) = p_vec((j-1)*n_x+i)
-            END DO
-        END DO
         
-        i = 1
-        CALL write_output_file(i)
         
-        ! !resolution avec jacobi
-        ! CALL jacobi_method()
         
-        ! DO i = 1, n_x
-        !     DO j = 1, n_y
-        !         p(i, j) = p_vec((j-1)*n_x+i)
-        !     END DO
-        ! END DO
-        
-        ! i = 2
-        ! CALL write_output_file(i)
         
         
         
@@ -490,11 +514,11 @@ CONTAINS
         
         DO i = 1, n_x
             DO j = 1, n_y
-                p(i, j) = EXP(space_grid%x(i))*SIN(space_grid%y(j))
+                p(i, j) = EXP(space_grid%x(i)*space_grid%y(j)) - 2*SINH(space_grid%x(i))
             END DO
         END DO
-        i = 10
-        CALL write_output_file(i)
+        ! i = -2
+        ! CALL write_output_file(i)
         
     END SUBROUTINE analytical_solving
     
