@@ -275,7 +275,6 @@ CONTAINS
                         b(k) = EXP(space_grid%y(j)) - 2*SINH(space_grid%x(n_x))
                     END IF
                     
-                    
                 ELSE 
                     
                     !valeur de b pour tous les autres points
@@ -285,9 +284,6 @@ CONTAINS
                 END IF
             END DO
         END DO
-        
-        
-        
         
     END SUBROUTINE fill_b
     
