@@ -463,7 +463,6 @@ CONTAINS
             END DO
         END DO
         
-        
     END SUBROUTINE fill_b
     
     
@@ -502,9 +501,8 @@ CONTAINS
         !CALL CPU_TIME(time1)
         
         !Tentative initiale
-        
-        DO i = 1, n_x
-            DO j = 1, n_y
+        DO j = 1, n_y
+            DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
@@ -512,43 +510,53 @@ CONTAINS
         
         k_max = SIZE(p_vec)
         
-        DO i = 1, k_max
-            jacobi_r(i) = SUM(a(i, :)*p_vec(:)) - b(i)
+        jacobi_r(:) = - b(:)
+        DO j = 1, k_max
+            jacobi_r(:) = jacobi_r(:) + a(:, j)*p_vec(j) 
         END DO
         
         iteration = 0
         
-       lower_norm = 1
-       upper_norm = 1 
+        !Integrale de la pression
+        integral = 0_RKIND
+        DO i = 1, n_x
+            DO j = 1, n_y
+                IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
+                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
+                ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
+                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
+                ELSE
+                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy
+                END IF
+            END DO
+        END DO
+        integral = integral/(l_x*l_y)
+        p_vec(:) = p_vec(:) - integral
+        
+        
+        lower_norm = 1
+        upper_norm = 1
         DO WHILE (upper_norm/lower_norm > RTol)
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
-                
                 p_vec(i) = p_vec_temp(i) - jacobi_r(i)/a(i, i)
             END DO
             
             !Integrale de la pression
-            ! integral = 0_RKIND
-            ! DO i = 1, n_x
-            !     DO j = 1, n_y
-            !         IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
-            !             integral = integral + p_vec((j-1)*n_x+i)*dx*dy/2
-            !         ELSE
-            !             integral = integral + p_vec((j-1)*n_x+i)*dx*dy
-            !         END IF
-            !     END DO
-            ! END DO
-            ! DO i = 1, n_x
-            !     DO j = 1, n_y
-            !         IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
-            !             p_vec((j-1)*n_x+i) = p_vec((j-1)*n_x+i) - integral/(dx*dy/2)
-            !         ELSE
-            !             p_vec((j-1)*n_x+i) = p_vec((j-1)*n_x+i) - integral/(dx*dy)
-            !         END IF
-            !     END DO
-            ! END DO
-            integral = SUM(p_vec(:))
-            p_vec(:) = p_vec(:) - integral/((n_x)*(n_y))
+            integral = 0_RKIND
+            DO i = 1, n_x
+                DO j = 1, n_y
+                    IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
+                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
+                    ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
+                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
+                    ELSE
+                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy
+                    END IF
+                END DO
+            END DO
+            integral = integral/(l_x*l_y)
+            p_vec(:) = p_vec(:) - integral
             
             CALL norm_2(p_vec, lower_norm)
             jacobi_r(:) = (p_vec(:)-p_vec_temp(:))
@@ -578,20 +586,9 @@ CONTAINS
         END DO
         
         !CALL CPU_TIME(time2)
-        
-        DO i = 1, n_x
-            DO j = 1, n_y
+        DO j = 1, n_y
+            DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
-            END DO
-        END DO
-        integral = 0_RKIND
-        DO i = 1, n_x
-            DO j = 1, n_y
-                IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy/4
-                ELSE
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy
-                END IF
             END DO
         END DO
         
@@ -622,7 +619,7 @@ CONTAINS
         v_temp(:,1) = 0_RKind
         v_temp(:,n_y) = 0_RKind
         
-        
+        !Calcul avec scheme régressif upwind d'ordre 1
         IF (scheme == 'UR1') THEN
 
             !calcul du n+1
@@ -661,63 +658,73 @@ CONTAINS
                 END DO
             END DO
 
+        !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
         
             
-
+            
             !calcul du n+1
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     
+                    !Schéma centré d'ordre 2 pour les bords
                     IF ((i == 2) .OR. (i == n_x-1) .OR. (j == 2) .OR. (j == n_y-1)) THEN
-                        
-                        !Ajustement du sens upwind pour u
-                        IF (u(i, j) > 0) THEN
-                            upwind_x = 1
-                        ELSE
-                            upwind_x = 0
-                        END IF
-                        
-                        !Ajustement du sens upwind pour v
-                        IF (v(i, j) > 0) THEN
-                            upwind_y = 1
-                        ELSE
-                            upwind_y = 0
-                        END IF
-                        
+                                                                     
                         !Calcul de u
-                        u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind) &
-                        - u(i,j)*dt/dx*2.0_RKind*(REAL(upwind_x) - 0.5_RKind) - v(i,j)*dt/dy*2.0_RKind*(REAL(upwind_y) &
-                        - 0.5_RKind)) + u(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/dx*REAL(upwind_x)) &
-                        + u(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/dy*REAL(upwind_y)) &
-                        + u(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/dx*REAL(1_RKind - upwind_x)) &
-                        + u(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/dy*REAL(1_RKind - upwind_y))
+                        u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+                        + u(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
+                        + u(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
+                        + u(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
+                        + u(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
                         
                         !Calcul de v
-                        v_temp(i,j) = v(i,j)*(1.0_RKind - 2.0_RKind*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2) &
-                        - u(i,j)*dt/dx*2.0_RKIND*(REAL(upwind_x) - 0.5_RKind) - v(i,j)*dt/dy*2.0_RKind*(REAL(upwind_y) &
-                        - 0.5_RKind)) + v(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/dx*REAL(upwind_x)) &
-                        + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/dy*REAL(upwind_y)) &
-                        + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/dx*REAL(1_RKind - upwind_x)) &
-                        + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/dy*REAL(1_RKind - upwind_y))
+                        v_temp(i,j) = v(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+                        + v(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
+                        + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
+                        + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
+                        + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
                         
+                    !Schéma centré d'ordre 4 pour le reste
                     ELSE
                         
-                        !Calcul de u
-                        u_temp(i,j) = u(i,j)*(1.0_RKind - dt*(2.0_RKind/(3.0_RKind*dx)*(u(i+1,j) - u(i-1,j)) &
-                        - 1.0_RKind/(12_RKIND*dx)*(u(i+2,j) - u(i-2,j)) + 2.0_RKind*viscosity/dx**2.0_RKind + & 
-                        2.0_RKind*viscosity/dy**2.0_RKind)) - dt*u(i,j+1)*(2.0_RKind/(3.0_RKind*dy)*v(i,j) - & 
-                        viscosity/dy**2.0_RKind) + dt*u(i,j-1)*(2.0_RKind/(3.0_RKind*dy)*v(i,j) + viscosity/dy**2.0_RKind) &
-                        + dt*u(i,j+2)*(1.0_RKind/(12_RKIND*dy)*v(i,j)) - dt*u(i,j-2)*(1.0_RKind/(12_RKIND*dy)*v(i,j)) &
-                        + dt*viscosity/dx**2.0_RKind*(u(i+1,j) + u(i-1,j))
+                        ! !Calcul de u
+                        ! u_temp(i,j) = u(i,j)*(1.0_RKind - dt*(2.0_RKind/(3.0_RKind*dx)*(u(i+1,j) - u(i-1,j)) &
+                        ! - 1.0_RKind/(12_RKIND*dx)*(u(i+2,j) - u(i-2,j)) + 2.0_RKind*viscosity/dx**2.0_RKind + & 
+                        ! 2.0_RKind*viscosity/dy**2.0_RKind)) - dt*u(i,j+1)*(2.0_RKind/(3.0_RKind*dy)*v(i,j) - & 
+                        ! viscosity/dy**2.0_RKind) + dt*u(i,j-1)*(2.0_RKind/(3.0_RKind*dy)*v(i,j) + viscosity/dy**2.0_RKind) &
+                        ! + dt*u(i,j+2)*(1.0_RKind/(12_RKIND*dy)*v(i,j)) - dt*u(i,j-2)*(1.0_RKind/(12_RKIND*dy)*v(i,j)) &
+                        ! + dt*viscosity/dx**2.0_RKind*(u(i+1,j) + u(i-1,j))
                     
+                        ! !Calcul de v
+                        ! v_temp(i,j) = v(i,j)*(1.0_RKind - dt*(2.0_RKind/(3.0_RKind*dx)*(v(i+1,j) - v(i-1,j)) &
+                        ! - 1.0_RKind/(12_RKIND*dx)*(v(i+2,j) - v(i-2,j)) + 2.0_RKind*viscosity/dx**2.0_RKind + & 
+                        ! 2.0_RKind*viscosity/dy**2.0_RKind)) - dt*v(i,j+1)*(2.0_RKind/(3.0_RKind*dy)*u(i,j) - & 
+                        ! viscosity/dy**2.0_RKind) + dt*v(i,j-1)*(2.0_RKind/(3.0_RKind*dy)*u(i,j) + viscosity/dy**2.0_RKind) &
+                        ! + dt*v(i,j+2)*(1.0_RKind/(12_RKIND*dy)*u(i,j)) - dt*v(i,j-2)*(1.0_RKind/(12_RKIND*dy)*u(i,j)) &
+                        ! + dt*viscosity/dx**2.0_RKind*(v(i+1,j) + v(i-1,j))
+                        
+                        !Calcul de u
+                        u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+                        + u(i-1,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(i,j)/(6_RKind*dx)) &
+                        + u(i,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(i,j)/(6_RKind*dy)) &
+                        + u(i+1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(i,j)/(6_RKind*dx)) &
+                        + u(i,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(i,j)/(6_RKind*dy)) &
+                        - u(i-2,j)*dt*u(i,j)/(12_RKind*dx) &
+                        - u(i,j-2)*dt*v(i,j)/(12_RKind*dx) &
+                        + u(i+2,j)*dt*u(i,j)/(12_RKind*dx) &
+                        + u(i,j+2)*dt*v(i,j)/(12_RKind*dx)
+                        
                         !Calcul de v
-                        v_temp(i,j) = v(i,j)*(1.0_RKind - dt*(2.0_RKind/(3.0_RKind*dx)*(v(i+1,j) - v(i-1,j)) &
-                        - 1.0_RKind/(12_RKIND*dx)*(v(i+2,j) - v(i-2,j)) + 2.0_RKind*viscosity/dx**2.0_RKind + & 
-                        2.0_RKind*viscosity/dy**2.0_RKind)) - dt*v(i,j+1)*(2.0_RKind/(3.0_RKind*dy)*u(i,j) - & 
-                        viscosity/dy**2.0_RKind) + dt*v(i,j-1)*(2.0_RKind/(3.0_RKind*dy)*u(i,j) + viscosity/dy**2.0_RKind) &
-                        + dt*v(i,j+2)*(1.0_RKind/(12_RKIND*dy)*u(i,j)) - dt*v(i,j-2)*(1.0_RKind/(12_RKIND*dy)*u(i,j)) &
-                        + dt*viscosity/dx**2.0_RKind*(v(i+1,j) + v(i-1,j))
+                        v_temp(i,j) = v(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+                        + v(i-1,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(i,j)/(6_RKind*dx)) &
+                        + v(i,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(i,j)/(6_RKind*dy)) &
+                        + v(i+1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(i,j)/(6_RKind*dx)) &
+                        + v(i,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(i,j)/(6_RKind*dy)) &
+                        - v(i-2,j)*dt*u(i,j)/(12_RKind*dx) &
+                        - v(i,j-2)*dt*v(i,j)/(12_RKind*dx) &
+                        + v(i+2,j)*dt*u(i,j)/(12_RKind*dx) &
+                        + v(i,j+2)*dt*v(i,j)/(12_RKind*dx)
+                        
                         
                     END IF
                     
@@ -763,10 +770,9 @@ CONTAINS
         v(:,1) = 0_RKind
         v(:,n_y) = 0_RKind
         
-        
-        DO i = 2, n_x-1
-            DO j = 2, n_y-1
-                
+        DO j = 2, n_y-1
+            DO i = 2, n_x-1
+            
                 u(i, j) = u_temp(i, j) - ((p(i+1, j) - p(i-1, j))/(2.0_RKind*dx))*dt/density
                 v(i, j) = v_temp(i, j) - ((p(i, j+1) - p(i, j-1))/(2.0_RKind*dy))*dt/density
                 
@@ -792,7 +798,7 @@ CONTAINS
         !Allocation du tableau permettant de stocker les valeurs intermediaires de calcul
         ALLOCATE(u_temp(n_x, n_y))
         ALLOCATE(v_temp(n_x, n_y))
-            
+        
         !Boucle temporelle du calcul
         DO WHILE ((last_iteration .EQV. .FALSE.) .AND. (i < NMax))
             
