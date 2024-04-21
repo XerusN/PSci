@@ -62,6 +62,7 @@ IMPLICIT NONE
     !structure qui contient les coordonnées en x et y d'un point du maillage
     TYPE COORDS
         REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: x, y
+        INTEGER, DIMENSION(:, :), ALLOCATABLE :: borders
     END TYPE
 
     !definition du maillage spatial, exprime les coordonnées en [m] de la case
@@ -242,6 +243,7 @@ CONTAINS
         
         ALLOCATE(space_grid%x(n_x))
         ALLOCATE(space_grid%y(n_y))
+        ALLOCATE(space_grid%borders(n_x, n_y))
         
         !calcul du pas spatial en x
         dx = l_x / REAL(n_x - 1)
@@ -256,6 +258,33 @@ CONTAINS
                 space_grid%y(j) = dy * REAL(j-1) 
             END DO
         END DO
+        
+        space_grid%borders(:, :) = 0
+        space_grid%borders(:, 1) = 4
+        space_grid%borders(:, n_y) = 8
+        space_grid%borders(1, :) = 1
+        space_grid%borders(n_x, :) = 2
+        space_grid%borders(2:n_x-1, 2) = 64
+        space_grid%borders(2:n_x-1, n_y-1) = 128
+        space_grid%borders(2, 2:n_y-1) = 16
+        space_grid%borders(n_x-1, 2:n_y-1) = 32
+        
+        !j\i     -2  -1  0   +1  +2
+            !+2  . | . |128| . | . 
+            !+1  . | . | 8 | . | . 
+            ! 0  16| 1 | x | 2 | 32
+            !-1  . | . | 4 | . | . 
+            !-2  . | . | 64| . | . 
+        
+        space_grid%borders(25, 30:50) = -1
+        space_grid%borders(26, 30:50) = 1
+        space_grid%borders(27, 30:50) = 16
+        space_grid%borders(24, 30:50) = 2
+        space_grid%borders(23, 30:50) = 32
+        space_grid%borders(25, 29) = 8
+        space_grid%borders(25, 28) = 128
+        ! space_grid%borders(25, 51) = 4
+        ! space_grid%borders(25, 32) = 64
         
     END SUBROUTINE create_space_grid
     
@@ -278,6 +307,16 @@ CONTAINS
         p(:, :) = 0_RKind
         
         u(:, n_y) = 1.0_RKind
+        
+        DO j = 1, n_y
+            DO i = 1, n_x
+                IF (space_grid%borders(i, j) < 0) THEN
+                    u(:, :) = 0_RKind
+                    v(:, :) = 0_RKind
+                    p(:, :) = 0_RKind
+                END IF
+            END DO
+        END DO
         
     END SUBROUTINE init_solution
     
@@ -302,16 +341,16 @@ CONTAINS
         ALLOCATE(jacobi_r(k_max))
         ALLOCATE(b(k_max))
         
-
-
+        
+        
         !Remplissage de la matrice A
         !initialisation
         a(:, :) = 0
-
+        
         !calcul des coefficients
         inv_x_2 = 1_RKind/(dx**2.0_RKind)
         inv_y_2 = 1_RKind/(dy**2.0_RKind)
-
+        
         
         DO j = 1, n_y
             DO i = 1, n_x
@@ -319,25 +358,25 @@ CONTAINS
                 k = (j - 1)*n_x + i
                 
                 !Conditions limites de dérivée nulle
-                IF (i == 1) THEN
+                IF (MOD(space_grid%borders(i,j), 2) == 1) THEN
                     
                     a(k, k) = 1_RKind
                     a(k, k + 1) = -1_RKind
                 
                 
-                ELSE IF (i == n_x) THEN
+                ELSE IF (MOD(space_grid%borders(i,j), 4)/2 == 1) THEN
                     
                     a(k, k) = 1_RKind
                     a(k, k - 1) = -1_RKind
                 
                 
-                ELSE IF (j == 1) THEN
+                ELSE IF (MOD(space_grid%borders(i,j), 8)/4 == 1) THEN
                 
                     a(k, k) = 1_RKind
                     a(k, k + n_x) = -1_RKind
                 
                 
-                ELSE IF (j == n_y) THEN
+                ELSE IF (MOD(space_grid%borders(i,j), 16)/8 == 1) THEN
                     
                     a(k, k) = 1_RKind
                     a(k, k - n_x) = -1_RKind
@@ -448,7 +487,7 @@ CONTAINS
             DO i = 1, n_x
 
                 k = (j - 1)*n_x + i
-                IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
+                IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
 
                     !application de la CL à b
                     b(k) = 0_RKind
@@ -556,6 +595,7 @@ CONTAINS
                 END DO
             END DO
             integral = integral/(l_x*l_y)
+            !integral = SUM(p_vec(:)*dx*dy)/(l_x*l_y)
             p_vec(:) = p_vec(:) - integral
             
             CALL norm_2(p_vec, lower_norm)
@@ -574,9 +614,9 @@ CONTAINS
                 STOP
             END IF
             
-            IF (MOD(iteration, 100) == 0) THEN
-                PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
-            END IF
+            ! IF (MOD(iteration, 100) == 0) THEN
+            !     PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
+            ! END IF
             
             !Integrale
             !integral = SUM(p_vec(:))
@@ -599,6 +639,29 @@ CONTAINS
     
     
     
+    SUBROUTINE cd_scheme_2(i, j)
+    
+    IMPLICIT NONE
+        
+        INTEGER(KIND = IKind), INTENT(IN) :: i, j
+        
+        u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+        + u(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
+        + u(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
+        + u(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
+        + u(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
+        
+        !Calcul de v
+        v_temp(i,j) = v(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+        + v(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
+        + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
+        + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
+        + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
+        
+    END SUBROUTINE
+    
+    
+    
     !calcul du profil de vitesse pour une itération temporelle
     SUBROUTINE speed_guess()
 
@@ -606,6 +669,7 @@ CONTAINS
 
         INTEGER(KIND = IKind) :: i, j !compteur
         INTEGER(KIND = IKIND) :: upwind_x, upwind_y     !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
+        
         
         !Application des conditions limites sur u
         u_temp(1,:) = 0_RKind
@@ -618,6 +682,8 @@ CONTAINS
         v_temp(n_x,:) = 0_RKind
         v_temp(:,1) = 0_RKind
         v_temp(:,n_y) = 0_RKind
+        
+        
         
         !Calcul avec scheme régressif upwind d'ordre 1
         IF (scheme == 'UR1') THEN
@@ -657,81 +723,65 @@ CONTAINS
                     + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/dy*REAL(1_RKind - upwind_y))
                 END DO
             END DO
-
+        
         !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
-        
-            
             
             !calcul du n+1
+            
+            
+            DO i = 2, n_x-1
+                CALL cd_scheme_2(i, 2)
+                CALL cd_scheme_2(i, n_y - 1)
+            END DO
+            DO j = 3, n_y-2
+                CALL cd_scheme_2(2, j)
+                CALL cd_scheme_2(n_x-1, j)
+            END DO
+            
+            DO j = 3, n_y-2
+                    
+                !Calcul de u
+                u_temp(3:n_x-2,j) = u(3:n_x-2,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+                + u(2:n_x-3,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
+                + u(3:n_x-2,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
+                + u(4:n_x-1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
+                + u(3:n_x-2,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
+                - u(1:n_x-4,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
+                - u(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dx) &
+                + u(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
+                + u(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
+                
+                !Calcul de v
+                v_temp(3:n_x-2,j) = v(3:n_x-2,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+                + v(2:n_x-3,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
+                + v(3:n_x-2,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
+                + v(4:n_x-1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
+                + v(3:n_x-2,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
+                - v(1:n_x-4,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
+                - v(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dx) &
+                + v(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
+                + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
+                    
+            END DO
+            
+            !Schéma centré d'ordre 2 pour les bords
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
-                    
-                    !Schéma centré d'ordre 2 pour les bords
-                    IF ((i == 2) .OR. (i == n_x-1) .OR. (j == 2) .OR. (j == n_y-1)) THEN
-                                                                     
-                        !Calcul de u
-                        u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
-                        + u(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
-                        + u(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
-                        + u(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
-                        + u(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
-                        
-                        !Calcul de v
-                        v_temp(i,j) = v(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
-                        + v(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
-                        + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
-                        + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
-                        + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
-                        
-                    !Schéma centré d'ordre 4 pour le reste
-                    ELSE
-                        
-                        ! !Calcul de u
-                        ! u_temp(i,j) = u(i,j)*(1.0_RKind - dt*(2.0_RKind/(3.0_RKind*dx)*(u(i+1,j) - u(i-1,j)) &
-                        ! - 1.0_RKind/(12_RKIND*dx)*(u(i+2,j) - u(i-2,j)) + 2.0_RKind*viscosity/dx**2.0_RKind + & 
-                        ! 2.0_RKind*viscosity/dy**2.0_RKind)) - dt*u(i,j+1)*(2.0_RKind/(3.0_RKind*dy)*v(i,j) - & 
-                        ! viscosity/dy**2.0_RKind) + dt*u(i,j-1)*(2.0_RKind/(3.0_RKind*dy)*v(i,j) + viscosity/dy**2.0_RKind) &
-                        ! + dt*u(i,j+2)*(1.0_RKind/(12_RKIND*dy)*v(i,j)) - dt*u(i,j-2)*(1.0_RKind/(12_RKIND*dy)*v(i,j)) &
-                        ! + dt*viscosity/dx**2.0_RKind*(u(i+1,j) + u(i-1,j))
-                    
-                        ! !Calcul de v
-                        ! v_temp(i,j) = v(i,j)*(1.0_RKind - dt*(2.0_RKind/(3.0_RKind*dx)*(v(i+1,j) - v(i-1,j)) &
-                        ! - 1.0_RKind/(12_RKIND*dx)*(v(i+2,j) - v(i-2,j)) + 2.0_RKind*viscosity/dx**2.0_RKind + & 
-                        ! 2.0_RKind*viscosity/dy**2.0_RKind)) - dt*v(i,j+1)*(2.0_RKind/(3.0_RKind*dy)*u(i,j) - & 
-                        ! viscosity/dy**2.0_RKind) + dt*v(i,j-1)*(2.0_RKind/(3.0_RKind*dy)*u(i,j) + viscosity/dy**2.0_RKind) &
-                        ! + dt*v(i,j+2)*(1.0_RKind/(12_RKIND*dy)*u(i,j)) - dt*v(i,j-2)*(1.0_RKind/(12_RKIND*dy)*u(i,j)) &
-                        ! + dt*viscosity/dx**2.0_RKind*(v(i+1,j) + v(i-1,j))
-                        
-                        !Calcul de u
-                        u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
-                        + u(i-1,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(i,j)/(6_RKind*dx)) &
-                        + u(i,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(i,j)/(6_RKind*dy)) &
-                        + u(i+1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(i,j)/(6_RKind*dx)) &
-                        + u(i,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(i,j)/(6_RKind*dy)) &
-                        - u(i-2,j)*dt*u(i,j)/(12_RKind*dx) &
-                        - u(i,j-2)*dt*v(i,j)/(12_RKind*dx) &
-                        + u(i+2,j)*dt*u(i,j)/(12_RKind*dx) &
-                        + u(i,j+2)*dt*v(i,j)/(12_RKind*dx)
-                        
-                        !Calcul de v
-                        v_temp(i,j) = v(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
-                        + v(i-1,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(i,j)/(6_RKind*dx)) &
-                        + v(i,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(i,j)/(6_RKind*dy)) &
-                        + v(i+1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(i,j)/(6_RKind*dx)) &
-                        + v(i,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(i,j)/(6_RKind*dy)) &
-                        - v(i-2,j)*dt*u(i,j)/(12_RKind*dx) &
-                        - v(i,j-2)*dt*v(i,j)/(12_RKind*dx) &
-                        + v(i+2,j)*dt*u(i,j)/(12_RKind*dx) &
-                        + v(i,j+2)*dt*v(i,j)/(12_RKind*dx)
-                        
-                        
+                    IF (space_grid%borders(i, j)/16 >= 0) THEN
+                        CALL cd_scheme_2(i, j)
                     END IF
-                    
                 END DO
             END DO
             
-            
+            DO j = 2, n_y-1
+                DO i = 2, n_x-1
+                    IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
+                        u_temp(i, j) = 0_RKIND
+                        v_temp(i, j) = 0_RKIND
+                    END IF
+                END DO
+            END DO
 
         END IF
         
@@ -771,11 +821,16 @@ CONTAINS
         v(:,n_y) = 0_RKind
         
         DO j = 2, n_y-1
+            u(2:n_x-1, j) = u_temp(2:n_x-1, j) - ((p(3:n_x, j) - p(1:n_x-2, j))/(2.0_RKind*dx))*dt/density
+            v(2:n_x-1, j) = v_temp(2:n_x-1, j) - ((p(2:n_x-1, j+1) - p(2:n_x-1, j-1))/(2.0_RKind*dy))*dt/density
+        END DO
+        
+        DO j = 2, n_y-1
             DO i = 2, n_x-1
-            
-                u(i, j) = u_temp(i, j) - ((p(i+1, j) - p(i-1, j))/(2.0_RKind*dx))*dt/density
-                v(i, j) = v_temp(i, j) - ((p(i, j+1) - p(i, j-1))/(2.0_RKind*dy))*dt/density
-                
+                IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
+                    u(i, j) = 0_RKIND
+                    v(i, j) = 0_RKIND
+                END IF
             END DO
         END DO
         
@@ -866,6 +921,7 @@ IMPLICIT NONE
 
     DEALLOCATE(space_grid%x)
     DEALLOCATE(space_grid%y)
+    DEALLOCATE(space_grid%borders)
     DEALLOCATE(u)
     DEALLOCATE(v)
     DEALLOCATE(a)
