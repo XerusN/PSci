@@ -63,6 +63,7 @@ IMPLICIT NONE
     TYPE COORDS
         REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: x, y
         INTEGER, DIMENSION(:, :), ALLOCATABLE :: borders
+        REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: grad_x, grad_y
     END TYPE
 
     !definition du maillage spatial, exprime les coordonnées en [m] de la case
@@ -79,9 +80,18 @@ IMPLICIT NONE
 
     !variable pour le choix de discretisation des termes convectifs
     CHARACTER(LEN = 3) :: scheme
-
     
+    !Permet de savoir de quelle manière appliquer des conditions initiales
+    CHARACTER(LEN = 2) :: initial_conditions
     
+    TYPE SETUP_TYPE
+        REAL(KIND = RKind), DIMENSION(5) :: u, v
+        REAL(KIND = RKind), DIMENSION(2, 5) :: poly
+        REAL(KIND = RKind), DIMENSION(2) :: poly_ref, squares_ref
+        REAL(KIND = RKind), DIMENSION(2, 3) :: squares
+    END TYPE
+    
+    TYPE(SETUP_TYPE) :: setup
     
 CONTAINS
     
@@ -91,6 +101,7 @@ CONTAINS
     IMPLICIT NONE
         
         CHARACTER(LEN = StrLen), INTENT(IN) :: name
+        INTEGER :: i
         
         !Ouverture du fichier
         OPEN(10, FILE = name)
@@ -139,26 +150,76 @@ CONTAINS
         !Nombre de Reynolds
         READ(10, *)
         READ(10, *) re
-        viscosity = l_x/re
+        
         READ(10, *)
         
         !Scheme choisi pour termes convectifs
         READ(10, *)
         READ(10, *) scheme
 
+        READ(10, *)
+        READ(10, *)
+        READ(10, *)
+        READ(10, *)
+        READ(10, *) initial_conditions
         
-        ! READ(10, *)
+        IF (initial_conditions == 'CC') THEN
+            
+            READ(10, *)
+            READ(10, *)
+            READ(10, *) setup%u(4)
+            READ(10, *) setup%u(1), setup%u(2)
+            READ(10, *) setup%u(3)
+            READ(10, *)
+            READ(10, *) setup%v(4)
+            READ(10, *) setup%v(1), setup%v(2)
+            READ(10, *) setup%v(3)
+            READ(10, *)
+            READ(10, *) setup%u(5), setup%v(5)
+            
+            READ(10, *)
+            
+            READ(10, *)
+            READ(10, *)
+            READ(10, *) setup%poly(1, :)
+            READ(10, *) setup%poly(2, :)
+            READ(10, *)
+            READ(10, *) setup%poly_ref(:)
+            
+            READ(10, *)
+            
+            READ(10, *)
+            READ(10, *) setup%squares(1, :)
+            READ(10, *) setup%squares(2, :)
+            READ(10, *)
+            READ(10, *) setup%squares_ref(:)
+            
+        ELSE
+            
+            setup%u(1:3) = 0_RKind
+            setup%u(4) = 1_RKind
+            setup%u(5) = 0.0_RKind
+            setup%v(:) = 0_RKind
+            setup%poly(:, :4) = 0_RKind
+            setup%poly(:, 5) = -1_RKind
+            setup%poly_ref(:) = 0.0_RKind
+            setup%poly_ref(:) = 0.0_RKind
+            setup%squares(2, :2) = 0_RKind
+            setup%squares(:, 3) = -1_RKind
+            setup%squares_ref(:) = 0.0_RKind
+            setup%squares_ref(:) = 0.0_RKind
+            
+        END IF
         
-        ! !Conditions limites
-        ! READ(10, *)
-        ! READ(10, *) boundary_condition_up
-        ! READ(10, *)
-        ! READ(10, *) boundary_condition_down
-        ! READ(10, *)
-        ! READ(10, *) boundary_condition_left
-        ! READ(10, *)
-        ! READ(10, *) boundary_condition_right
-        
+        viscosity = 0_RKind
+        DO i = 1, 4
+            IF (l_x*setup%u(i)/re > viscosity) THEN
+                viscosity = l_x*setup%u(i)/re
+            END IF
+            IF (l_y*setup%v(i)/re > viscosity) THEN
+                viscosity = l_y*setup%v(i)/re
+            END IF
+        END DO
         
         
         !Fermeture du fichier
@@ -232,18 +293,22 @@ CONTAINS
         
     
     
-    !maj à l'Etape 2, 2D
+        !maj à l'Etape 7, 2D
     !subroutine de creation du maillage spatial, contient les coordonnées exactes de chaque pt, en 2D
     SUBROUTINE create_space_grid()
 
     IMPLICIT NONE
 
-        INTEGER(KIND = IKind) :: i, j
-    
+        INTEGER(KIND = IKind) :: i, j, k
+        INTEGER, DIMENSION(:, :), ALLOCATABLE :: borders_grid
+        REAL(KIND = RKIND) :: x, y, poly1, poly2, squares1, squares2
         
         ALLOCATE(space_grid%x(n_x))
         ALLOCATE(space_grid%y(n_y))
         ALLOCATE(space_grid%borders(n_x, n_y))
+        ALLOCATE(borders_grid(-1:n_x+2, -1:n_y+2))
+        ALLOCATE(space_grid%grad_x(0:n_x+1, 0:n_y+1))
+        ALLOCATE(space_grid%grad_y(0:n_x+1, 0:n_y+1))
         
         !calcul du pas spatial en x
         dx = l_x / REAL(n_x - 1)
@@ -259,16 +324,108 @@ CONTAINS
             END DO
         END DO
         
-        space_grid%borders(:, :) = 0
-        space_grid%borders(:, 1) = 4
-        space_grid%borders(:, n_y) = 8
-        space_grid%borders(1, :) = 1
-        space_grid%borders(n_x, :) = 2
-        space_grid%borders(2:n_x-1, 2) = 64
-        space_grid%borders(2:n_x-1, n_y-1) = 128
-        space_grid%borders(2, 2:n_y-1) = 16
-        space_grid%borders(n_x-1, 2:n_y-1) = 32
+        borders_grid(:, :) = 0
+        borders_grid(-1:0, :) = 1
+        borders_grid(n_x+1:n_x+2, :) = 1
+        borders_grid(:, -1:0) = 1
+        borders_grid(:, n_y+1:n_y+2) = 1
         
+        ! OPEN(11, FILE = 'debug/borders_grid.txt')
+        
+        ! DO i = -1, n_x+2
+        !     WRITE(11, *) borders_grid(i, :)
+        ! END DO
+        
+        ! CLOSE(11)
+        
+        space_grid%grad_x(:, :) = 0.0_RKind
+        space_grid%grad_y(:, :) = 0.0_RKind
+        
+        space_grid%grad_y(:, 0) = 1.0_RKind
+        space_grid%grad_y(:, n_y+1) = -1.0_RKind
+        space_grid%grad_x(0, :) = 1.0_RKind
+        space_grid%grad_x(n_x+1, :) = -1.0_RKind
+        
+        DO j = 1, n_y
+            y = space_grid%y(j)
+            DO i = 1, n_x
+                x = space_grid%x(i)
+                poly1 = (x - setup%poly_ref(1))*(setup%poly(1, 1)*(x - setup%poly_ref(1)) + setup%poly(1, 2)) &
+                + (y - setup%poly_ref(2))*(setup%poly(1, 3)*(y - setup%poly_ref(2)) + setup%poly(1, 4))
+                poly1 = setup%poly(1, 5) - poly1
+                
+                poly2 = (x - setup%poly_ref(1))*(setup%poly(2, 1)*(x - setup%poly_ref(1)) + setup%poly(2, 2)) &
+                + (y - setup%poly_ref(2))*(setup%poly(2, 3)*(y - setup%poly_ref(2)) + setup%poly(2, 4))
+                poly2 = setup%poly(2, 5) - poly2
+                
+                squares1 = ABS(x - setup%squares_ref(1))*setup%squares(1, 1) + ABS(y - setup%squares_ref(2))*setup%squares(1, 2)
+                squares1 = setup%squares(1, 3) - squares1
+                
+                squares2 = ABS(x - setup%squares_ref(1))*setup%squares(2, 1) + ABS(y - setup%squares_ref(2))*setup%squares(2, 2)
+                squares2 = setup%squares(2, 3) - squares2
+                
+                IF ((poly1 >= 0) .AND. (poly2 >= 0) .AND. (squares1 >= 0) .AND. (squares2 >= 0)) THEN
+                
+                    borders_grid(i, j) = 1
+                    
+                    IF ((poly1 <= poly2) .AND. (poly1 <= squares1) .AND. (poly1 <= squares2)) THEN
+                        
+                        space_grid%grad_x(i, j) = 2*setup%poly(1, 1)*(x - setup%poly_ref(1)) + setup%poly(1, 2)
+                        space_grid%grad_y(i, j) = 2*setup%poly(1, 3)*(y - setup%poly_ref(2)) + setup%poly(1, 4)
+                        
+                    ELSE IF ((poly2 <= squares1) .AND. (poly2 <= squares2)) THEN
+                        
+                        space_grid%grad_x(i, j) = 2*setup%poly(2, 1)*(x - setup%poly_ref(1)) + setup%poly(2, 2)
+                        space_grid%grad_y(i, j) = 2*setup%poly(2, 3)*(y - setup%poly_ref(2)) + setup%poly(2, 4)
+                        
+                    ELSE IF (squares1 <= squares2) THEN
+                        
+                        space_grid%grad_x(i, j) = setup%squares(1, 1)*(x - setup%squares_ref(1))/ABS((x - setup%squares_ref(1)))
+                        space_grid%grad_y(i, j) = setup%squares(1, 2)*(y - setup%squares_ref(2))/ABS((y - setup%squares_ref(2)))
+                        
+                    ELSE
+                        
+                        space_grid%grad_x(i, j) = setup%squares(2, 1)*(x - setup%squares_ref(1))/ABS((x - setup%squares_ref(1)))
+                        space_grid%grad_y(i, j) = setup%squares(2, 2)*(y - setup%squares_ref(2))/ABS((y - setup%squares_ref(2)))
+                        
+                    END IF
+                    
+                END IF
+                
+            END DO
+        END DO
+        
+        ! OPEN(11, FILE = 'debug/borders_grid.txt')
+        
+        ! DO i = 1, n_x
+        !     WRITE(11, *) borders_grid(i, :)
+        ! END DO
+        
+        ! CLOSE(11)
+        
+        DO j = 1, n_y
+            space_grid%borders(:, j) = borders_grid(0:n_x-1, j)*1 + borders_grid(-1:n_x-1, j)*16 &
+            + borders_grid(2:n_x+1, j)*2 + borders_grid(3:n_x+2, j)*32 &
+            + borders_grid(1:n_x, j-1)*4 + borders_grid(1:n_x, j-2)*64 &
+            + borders_grid(1:n_x, j+1)*8 + borders_grid(1:n_x, j+2)*128
+        END DO
+        
+        DO j = 1, n_y
+            DO i = 1, n_x
+                IF (borders_grid(i, j) == 1) THEN
+                    space_grid%borders(i, j) = -1
+                END IF
+            END DO
+        END DO
+        
+        OPEN(11, FILE = 'debug/borders.txt')
+        
+        DO i = 1, n_x
+            WRITE(11, *) space_grid%borders(i, :)
+        END DO
+        
+        CLOSE(11)
+                
         !j\i     -2  -1  0   +1  +2
             !+2  . | . |128| . | . 
             !+1  . | . | 8 | . | . 
@@ -276,15 +433,7 @@ CONTAINS
             !-1  . | . | 4 | . | . 
             !-2  . | . | 64| . | . 
         
-        space_grid%borders(25, 30:50) = -1
-        space_grid%borders(26, 30:50) = 1
-        space_grid%borders(27, 30:50) = 16
-        space_grid%borders(24, 30:50) = 2
-        space_grid%borders(23, 30:50) = 32
-        space_grid%borders(25, 29) = 8
-        space_grid%borders(25, 28) = 128
-        ! space_grid%borders(25, 51) = 4
-        ! space_grid%borders(25, 32) = 64
+        DEALLOCATE(borders_grid)
         
     END SUBROUTINE create_space_grid
     
@@ -302,21 +451,31 @@ CONTAINS
         ALLOCATE(p(n_x, n_y))
         
         !Assignation pour chaque position
-        u(:, :) = 0_RKind
-        v(:, :) = 0_RKind
+        u(:, :) = setup%u(5)
+        v(:, :) = setup%v(5)
         p(:, :) = 0_RKind
         
-        u(:, n_y) = 1.0_RKind
+        u(1, :) = setup%u(1)
+        u(n_x, :) = setup%u(2)
+        u(:, 1) = setup%u(3)
+        u(:, n_y) = setup%u(4)
+        
+        v(1, :) = setup%v(1)
+        v(n_x, :) = setup%v(2)
+        v(:, 1) = setup%v(3)
+        v(:, n_y) = setup%v(4)
         
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
-                    u(:, :) = 0_RKind
-                    v(:, :) = 0_RKind
-                    p(:, :) = 0_RKind
+                    u(i, j) = 0_RKind
+                    v(i, j) = 0_RKind
+                    p(i, j) = 0_RKind
                 END IF
             END DO
         END DO
+        
+        
         
     END SUBROUTINE init_solution
     
@@ -324,7 +483,7 @@ CONTAINS
     
     !maj à l'étape 4, 2D
     !Création et remplissage de la matrice A et allocation des tableaux nécessaires à Jacobi
-    SUBROUTINE jacobi_init()
+    SUBROUTINE init_a()
     
     IMPLICIT NONE
         
@@ -333,7 +492,7 @@ CONTAINS
 
         !calcul de la dimension du vecteur solution
         k_max = n_x*n_y
-
+        
         ALLOCATE(a(k_max, k_max))
         ALLOCATE(a_loc(k_max, k_max))
         ALLOCATE(p_vec(k_max))
@@ -351,35 +510,63 @@ CONTAINS
         inv_x_2 = 1_RKind/(dx**2.0_RKind)
         inv_y_2 = 1_RKind/(dy**2.0_RKind)
         
+        !j\i     -2  -1  0   +1  +2
+            !+2  . | . |128| . | . 
+            !+1  . | . | 8 | . | . 
+            ! 0  16| 1 | x | 2 | 32
+            !-1  . | . | 4 | . | . 
+            !-2  . | . | 64| . | .
+        !
         
         DO j = 1, n_y
             DO i = 1, n_x
 
                 k = (j - 1)*n_x + i
                 
-                !Conditions limites de dérivée nulle
-                IF (MOD(space_grid%borders(i,j), 2) == 1) THEN
+                IF (space_grid%borders(i,j) < 0) THEN
+                
+                    a(k, k) = 0_RKind
                     
-                    a(k, k) = 1_RKind
-                    a(k, k + 1) = -1_RKind
-                
-                
+                !Conditions limites de dérivée nulle
+                ELSE IF (MOD(space_grid%borders(i,j), 2) == 1) THEN
+                    
+                    a(k, k) = -SQRT(space_grid%grad_x(i-1, j)**2.0_RKind + space_grid%grad_y(i-1, j)**2.0_RKind)
+                    a(k, k + 1) = ABS(space_grid%grad_x(i-1, j))
+                    IF (space_grid%grad_y(i-1, j) > 0) THEN
+                        a(k, k + n_x) = ABS(space_grid%grad_y(i-1, j))
+                    ELSE
+                        a(k, k - n_x) = ABS(space_grid%grad_y(i-1, j))
+                    END IF
+
                 ELSE IF (MOD(space_grid%borders(i,j), 4)/2 == 1) THEN
                     
-                    a(k, k) = 1_RKind
-                    a(k, k - 1) = -1_RKind
-                
-                
+                    a(k, k) = -SQRT(space_grid%grad_x(i+1, j)**2.0_RKind + space_grid%grad_y(i+1, j)**2.0_RKind)
+                    a(k, k - 1) = ABS(space_grid%grad_x(i+1, j))
+                    IF (space_grid%grad_y(i+1, j) > 0) THEN
+                        a(k, k + n_x) = ABS(space_grid%grad_y(i+1, j))
+                    ELSE
+                        a(k, k - n_x) = ABS(space_grid%grad_y(i+1, j))
+                    END IF
+                    
                 ELSE IF (MOD(space_grid%borders(i,j), 8)/4 == 1) THEN
                 
-                    a(k, k) = 1_RKind
-                    a(k, k + n_x) = -1_RKind
-                
-                
+                    a(k, k) = -SQRT(space_grid%grad_x(i, j-1)**2.0_RKind + space_grid%grad_y(i, j-1)**2.0_RKind)
+                    a(k, k + n_x) = ABS(space_grid%grad_y(i, j-1))
+                    IF (space_grid%grad_x(i, j-1) > 0) THEN
+                        a(k, k + 1) = ABS(space_grid%grad_x(i, j-1))
+                    ELSE
+                        a(k, k - 1) = ABS(space_grid%grad_x(i, j-1))
+                    END IF
+                    
                 ELSE IF (MOD(space_grid%borders(i,j), 16)/8 == 1) THEN
                     
-                    a(k, k) = 1_RKind
-                    a(k, k - n_x) = -1_RKind
+                    a(k, k) = -SQRT(space_grid%grad_x(i, j+1)**2.0_RKind + space_grid%grad_y(i, j+1)**2.0_RKind)
+                    a(k, k - n_x) = ABS(space_grid%grad_y(i, j+1))
+                    IF (space_grid%grad_x(i, j+1) > 0) THEN
+                        a(k, k + 1) = ABS(space_grid%grad_x(i, j+1))
+                    ELSE
+                        a(k, k - 1) = ABS(space_grid%grad_x(i, j+1))
+                    END IF
                     
                 ELSE 
                     !sinon on applique les coefficients de l'équation
@@ -388,14 +575,11 @@ CONTAINS
                     a(k, k - 1) = inv_x_2
                     a(k, k + n_x) = inv_y_2
                     a(k, k - n_x) = inv_y_2
-                    
-
                 END IF
-
             END DO
         END DO
         
-    END SUBROUTINE jacobi_init
+    END SUBROUTINE init_a
     
     
     
@@ -426,7 +610,7 @@ CONTAINS
         !initalisation de la solution grâce aux conditions initiales
         CALL init_solution()
         
-        CALL jacobi_init()
+        CALL init_a()
         
         i = 0
         !Ecriture de la solution initiale
@@ -457,12 +641,14 @@ CONTAINS
 
                 IF (dt_temp < dt_min) THEN
                     dt_min = dt_temp
+                    PRINT*, dt_temp, 'u'
                 END IF
 
                 dt_temp = cfl*dy/ABS(v(i,j))     !calcul du minimum potentiel sur v
 
                 IF (dt_temp < dt_min) THEN
                     dt_min = dt_temp
+                    PRINT*, dt_temp, 'v'
                 END IF
             END DO
         END DO
@@ -578,7 +764,9 @@ CONTAINS
         DO WHILE (upper_norm/lower_norm > RTol)
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
-                p_vec(i) = p_vec_temp(i) - jacobi_r(i)/a(i, i)
+                IF (ABS(a(i, i)) > 1E-15_RKind) THEN
+                    p_vec(i) = p_vec_temp(i) - jacobi_r(i)/a(i, i)
+                END IF
             END DO
             
             !Integrale de la pression
@@ -614,9 +802,9 @@ CONTAINS
                 STOP
             END IF
             
-            ! IF (MOD(iteration, 100) == 0) THEN
-            !     PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
-            ! END IF
+            IF (MOD(iteration, 100) == 0) THEN
+                PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
+            END IF
             
             !Integrale
             !integral = SUM(p_vec(:))
@@ -671,17 +859,26 @@ CONTAINS
         INTEGER(KIND = IKIND) :: upwind_x, upwind_y     !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
         
         
-        !Application des conditions limites sur u
-        u_temp(1,:) = 0_RKind
-        u_temp(n_x,:) = 0_RKind
-        u_temp(:,1) = 0_RKind
-        u_temp(:,n_y) = 1_RKind
+        !Conditions limites
+        u_temp(1, :) = setup%u(1)
+        u_temp(n_x, :) = setup%u(2)
+        u_temp(:, 1) = setup%u(3)
+        u_temp(:, n_y) = setup%u(4)
         
-        !Application des conditions limites sur v
-        v_temp(1,:) = 0_RKind
-        v_temp(n_x,:) = 0_RKind
-        v_temp(:,1) = 0_RKind
-        v_temp(:,n_y) = 0_RKind
+        v_temp(1, :) = setup%v(1)
+        v_temp(n_x, :) = setup%v(2)
+        v_temp(:, 1) = setup%v(3)
+        v_temp(:, n_y) = setup%v(4)
+        
+        DO j = 1, n_y
+            DO i = 1, n_x
+                IF (space_grid%borders(i, j) < 0) THEN
+                    u(i, j) = 0_RKind
+                    v(i, j) = 0_RKind
+                    p(i, j) = 0_RKind
+                END IF
+            END DO
+        END DO
         
         
         
@@ -808,17 +1005,26 @@ CONTAINS
         
         INTEGER(KIND = IKind) :: i, j
         
-        !Application des conditions limites sur u
-        u(1,:) = 0_RKind
-        u(n_x,:) = 0_RKind
-        u(:,1) = 0_RKind
-        u(:,n_y) = 1_RKind
+        !Conditions limites
+        u(1, :) = setup%u(1)
+        u(n_x, :) = setup%u(2)
+        u(:, 1) = setup%u(3)
+        u(:, n_y) = setup%u(4)
         
-        !Application des conditions limites sur v
-        v(1,:) = 0_RKind
-        v(n_x,:) = 0_RKind
-        v(:,1) = 0_RKind
-        v(:,n_y) = 0_RKind
+        v(1, :) = setup%v(1)
+        v(n_x, :) = setup%v(2)
+        v(:, 1) = setup%v(3)
+        v(:, n_y) = setup%v(4)
+        
+        DO j = 1, n_y
+            DO i = 1, n_x
+                IF (space_grid%borders(i, j) < 0) THEN
+                    u(i, j) = 0_RKind
+                    v(i, j) = 0_RKind
+                    p(i, j) = 0_RKind
+                END IF
+            END DO
+        END DO
         
         DO j = 2, n_y-1
             u(2:n_x-1, j) = u_temp(2:n_x-1, j) - ((p(3:n_x, j) - p(1:n_x-2, j))/(2.0_RKind*dx))*dt/density
@@ -931,5 +1137,7 @@ IMPLICIT NONE
     DEALLOCATE(p_vec)
     DEALLOCATE(p_vec_temp)
     DEALLOCATE(jacobi_r)
+    DEALLOCATE(space_grid%grad_x)
+    DEALLOCATE(space_grid%grad_y)
     
 END PROGRAM main

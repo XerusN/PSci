@@ -7,7 +7,7 @@
 10
 
 # l_x l_y
-1 1
+1.0 1.0
 
 # frame
 10
@@ -24,3 +24,34 @@
 
 # Chosen Scheme ('UR1' pour upwind régressif ou 'CD4' pour CD pour termes convectifs)
 CD4
+
+## Conditions initiales
+
+# Cavite entrainee ('CE') ou conditions custom ('CC')
+CC
+
+# Big borders u:
+1.0
+0.0 0.0
+0.0
+# Big borders v:
+0.0
+0.0 0.0
+0.0
+# Global u, v
+0.0 0.0
+
+[si toutes les conditions géometriques sont inutiles, mettre 0 0 0 0 -1]
+# Obstacles polynomials coeff a, b, c, d, e (a*x^2 + b*x + c*y^2 + d*y <= e) [si certaines conditions inutiles, mettre 0 0 0 0 1]
+1.0 0.0 1.0 0.0 0.02
+0.0 0.0 0.0 0.0 1.0
+# Point de référence des polynomes (x, y)
+0.5 0.5
+
+# Obstacles rectangulaires : a*abs(x) + b*abs(y) <= c [si certaines conditions inutiles, mettre 0 0 1]
+0.0 0.0 1.0
+0.0 0.0 1.0
+# Point de référence (x, y)
+0.5 0.5
+
+### Des conditions impossibles physiquement resulteront en un résultat absurde, il n'y a aucun avertissement de la part du programme.
