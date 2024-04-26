@@ -39,6 +39,10 @@ IMPLICIT NONE
 
     !Fo nombre de Fourier en x et y
     REAL(KIND = RKind) :: fo
+    
+    !Grandeurs caractériqtiques pour le calcul des nombres adimensionnels
+    REAL(KIND = RKind) :: l_c, u_c
+    
 
     ! !conditions limites a gauche et a droite [m/s] (même unité que u)
     ! REAL(KIND = RKind) :: boundary_condition_left, boundary_condition_right
@@ -53,7 +57,7 @@ IMPLICIT NONE
     REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: u_temp, v_temp
     
     !matrice A de l'equation de poisson
-    REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: a, a_loc
+    REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: a, a_loc, a_opti
     !vecteur b de l'équation de poisson
     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: b
     !Stockage de p sous forme vectorielle et residu de la méthode de jacobi
@@ -150,8 +154,12 @@ CONTAINS
         !Nombre de Reynolds
         READ(10, *)
         READ(10, *) re
-        
         READ(10, *)
+        READ(10, *) l_c
+        READ(10, *)
+        READ(10, *) u_c
+        READ(10, *)
+        viscosity = u_c*l_c/re
         
         !Scheme choisi pour termes convectifs
         READ(10, *)
@@ -211,16 +219,6 @@ CONTAINS
             
         END IF
         
-        viscosity = 0_RKind
-        DO i = 1, 4
-            IF (l_x*setup%u(i)/re > viscosity) THEN
-                viscosity = l_x*setup%u(i)/re
-            END IF
-            IF (l_y*setup%v(i)/re > viscosity) THEN
-                viscosity = l_y*setup%v(i)/re
-            END IF
-        END DO
-        
         
         !Fermeture du fichier
         CLOSE(10)
@@ -276,13 +274,13 @@ CONTAINS
         INTEGER(KIND = RKind) :: i, j
         
         WRITE(name, '(I0)') iteration
-        name = 'debug/b_' // TRIM(name) // '.dat'
+        name = 'debug/a_opti_' // TRIM(name) // '.dat'
         
         !Ouverture du fichier a ecrire
         OPEN(11, FILE = name)
         
         DO i = 1, n_x*n_y
-            WRITE(11, *) 'i = ', i, ' | b(i) = ', b(i)
+            WRITE(11, '(A, I3, A, 5(F7.1))') 'i = ', i, ' | a_opti(i) = ', a_opti(i, :)
         END DO
         
         !Fermeture du fichier
@@ -495,6 +493,7 @@ CONTAINS
         
         ALLOCATE(a(k_max, k_max))
         ALLOCATE(a_loc(k_max, k_max))
+        ALLOCATE(a_opti(k_max, 5))
         ALLOCATE(p_vec(k_max))
         ALLOCATE(p_vec_temp(k_max))
         ALLOCATE(jacobi_r(k_max))
@@ -530,42 +529,42 @@ CONTAINS
                 !Conditions limites de dérivée nulle
                 ELSE IF (MOD(space_grid%borders(i,j), 2) == 1) THEN
                     
-                    a(k, k) = -SQRT(space_grid%grad_x(i-1, j)**2.0_RKind + space_grid%grad_y(i-1, j)**2.0_RKind)
-                    a(k, k + 1) = ABS(space_grid%grad_x(i-1, j))
+                    a(k, k) = -ABS(space_grid%grad_x(i-1, j))/dx - ABS(space_grid%grad_y(i-1, j))/dy
+                    a(k, k + 1) = ABS(space_grid%grad_x(i-1, j))/dx
                     IF (space_grid%grad_y(i-1, j) > 0) THEN
-                        a(k, k + n_x) = ABS(space_grid%grad_y(i-1, j))
+                        a(k, k + n_x) = ABS(space_grid%grad_y(i-1, j))/dy
                     ELSE
-                        a(k, k - n_x) = ABS(space_grid%grad_y(i-1, j))
+                        a(k, k - n_x) = ABS(space_grid%grad_y(i-1, j))/dy
                     END IF
 
                 ELSE IF (MOD(space_grid%borders(i,j), 4)/2 == 1) THEN
                     
-                    a(k, k) = -SQRT(space_grid%grad_x(i+1, j)**2.0_RKind + space_grid%grad_y(i+1, j)**2.0_RKind)
-                    a(k, k - 1) = ABS(space_grid%grad_x(i+1, j))
+                    a(k, k) = -ABS(space_grid%grad_x(i+1, j))/dx - ABS(space_grid%grad_y(i+1, j))/dy
+                    a(k, k - 1) = ABS(space_grid%grad_x(i+1, j))/dx
                     IF (space_grid%grad_y(i+1, j) > 0) THEN
-                        a(k, k + n_x) = ABS(space_grid%grad_y(i+1, j))
+                        a(k, k + n_x) = ABS(space_grid%grad_y(i+1, j))/dy
                     ELSE
-                        a(k, k - n_x) = ABS(space_grid%grad_y(i+1, j))
+                        a(k, k - n_x) = ABS(space_grid%grad_y(i+1, j))/dy
                     END IF
                     
                 ELSE IF (MOD(space_grid%borders(i,j), 8)/4 == 1) THEN
                 
-                    a(k, k) = -SQRT(space_grid%grad_x(i, j-1)**2.0_RKind + space_grid%grad_y(i, j-1)**2.0_RKind)
-                    a(k, k + n_x) = ABS(space_grid%grad_y(i, j-1))
+                    a(k, k) = -ABS(space_grid%grad_x(i, j-1))/dx - ABS(space_grid%grad_y(i, j-1))/dy
+                    a(k, k + n_x) = ABS(space_grid%grad_y(i, j-1))/dy
                     IF (space_grid%grad_x(i, j-1) > 0) THEN
-                        a(k, k + 1) = ABS(space_grid%grad_x(i, j-1))
+                        a(k, k + 1) = ABS(space_grid%grad_x(i, j-1))/dx
                     ELSE
-                        a(k, k - 1) = ABS(space_grid%grad_x(i, j-1))
+                        a(k, k - 1) = ABS(space_grid%grad_x(i, j-1))/dx
                     END IF
                     
                 ELSE IF (MOD(space_grid%borders(i,j), 16)/8 == 1) THEN
                     
-                    a(k, k) = -SQRT(space_grid%grad_x(i, j+1)**2.0_RKind + space_grid%grad_y(i, j+1)**2.0_RKind)
-                    a(k, k - n_x) = ABS(space_grid%grad_y(i, j+1))
+                    a(k, k) = -ABS(space_grid%grad_x(i, j+1))/dx - ABS(space_grid%grad_y(i, j+1))/dy
+                    a(k, k - n_x) = ABS(space_grid%grad_y(i, j+1))/dy
                     IF (space_grid%grad_x(i, j+1) > 0) THEN
-                        a(k, k + 1) = ABS(space_grid%grad_x(i, j+1))
+                        a(k, k + 1) = ABS(space_grid%grad_x(i, j+1))/dx
                     ELSE
-                        a(k, k - 1) = ABS(space_grid%grad_x(i, j+1))
+                        a(k, k - 1) = ABS(space_grid%grad_x(i, j+1))/dx
                     END IF
                     
                 ELSE 
@@ -576,6 +575,33 @@ CONTAINS
                     a(k, k + n_x) = inv_y_2
                     a(k, k - n_x) = inv_y_2
                 END IF
+            END DO
+        END DO
+        
+        a_opti(:, :) = 0.0_RKind
+        DO j = 1, n_y
+            DO i = 1, n_x
+
+                k = (j - 1)*n_x + i
+                
+                a_opti(k, 3) = a(k, k)
+                IF (i > 1) THEN
+                    a_opti(k, 2) = a(k, k-1)
+                END IF
+                IF (i < n_x) THEN
+                    a_opti(k, 4) = a(k, k+1)
+                END IF
+                IF (j > 0) THEN
+                    a_opti(k, 1) = a(k, k-n_x)
+                END IF
+                IF (j < n_y) THEN
+                    a_opti(k, 5) = a(k, k+n_x)
+                END IF
+                
+                ! IF (SUM(a_opti(k, :)) /= 0) THEN
+                !     PRINT*, 'i = ', i, 'j = ', j, SUM(a_opti(k, :))
+                ! END IF
+                
             END DO
         END DO
         
@@ -641,14 +667,14 @@ CONTAINS
 
                 IF (dt_temp < dt_min) THEN
                     dt_min = dt_temp
-                    PRINT*, dt_temp, 'u'
+                    !PRINT*, dt_temp, 'u'
                 END IF
 
                 dt_temp = cfl*dy/ABS(v(i,j))     !calcul du minimum potentiel sur v
 
                 IF (dt_temp < dt_min) THEN
                     dt_min = dt_temp
-                    PRINT*, dt_temp, 'v'
+                    !PRINT*, dt_temp, 'v'
                 END IF
             END DO
         END DO
@@ -733,12 +759,15 @@ CONTAINS
         END DO
         p_vec_temp(:) = p_vec(:)
         
-        k_max = SIZE(p_vec)
+        k_max = n_x*n_y
         
         jacobi_r(:) = - b(:)
-        DO j = 1, k_max
-            jacobi_r(:) = jacobi_r(:) + a(:, j)*p_vec(j) 
-        END DO
+        
+        jacobi_r(1:k_max) = jacobi_r(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
+        jacobi_r(2:k_max) = jacobi_r(2:k_max) + a_opti(2:k_max, 2)*p_vec(1:k_max-1)
+        jacobi_r(1:k_max-1) = jacobi_r(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
+        jacobi_r(n_x+1:k_max) = jacobi_r(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
+        jacobi_r(1:k_max-n_x) = jacobi_r(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
         
         iteration = 0
         
@@ -764,8 +793,8 @@ CONTAINS
         DO WHILE (upper_norm/lower_norm > RTol)
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
-                IF (ABS(a(i, i)) > 1E-15_RKind) THEN
-                    p_vec(i) = p_vec_temp(i) - jacobi_r(i)/a(i, i)
+                IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
+                    p_vec(i) = p_vec_temp(i) - jacobi_r(i)/a_opti(i, 3)
                 END IF
             END DO
             
@@ -791,10 +820,12 @@ CONTAINS
             CALL norm_2(jacobi_r, upper_norm)
             
             jacobi_r(:) = - b(:)
-            DO j = 1, k_max
-                jacobi_r(:) = jacobi_r(:) + a(:, j)*p_vec(j)
-            END DO
             
+            jacobi_r(1:k_max) = jacobi_r(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
+            jacobi_r(2:k_max) = jacobi_r(2:k_max) + a_opti(2:k_max, 2)*p_vec(1:k_max-1)
+            jacobi_r(1:k_max-1) = jacobi_r(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
+            jacobi_r(n_x+1:k_max) = jacobi_r(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
+            jacobi_r(1:k_max-n_x) = jacobi_r(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -802,14 +833,9 @@ CONTAINS
                 STOP
             END IF
             
-            IF (MOD(iteration, 100) == 0) THEN
-                PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
-            END IF
-            
-            !Integrale
-            !integral = SUM(p_vec(:))
-            !PRINT*, integral
-            
+            ! IF (MOD(iteration, 100) == 0) THEN
+            !     PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
+            ! END IF
             
         END DO
         
@@ -979,7 +1005,26 @@ CONTAINS
                     END IF
                 END DO
             END DO
-
+            
+        !Calcul avec scheme centré d'ordre 4
+        ELSE IF (scheme == 'CD2') THEN
+            
+            !Schéma centré d'ordre 2 pour les bords
+            DO j = 2, n_y-1
+                DO i = 2, n_x-1
+                    CALL cd_scheme_2(i, j)
+                END DO
+            END DO
+            
+            DO j = 2, n_y-1
+                DO i = 2, n_x-1
+                    IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
+                        u_temp(i, j) = 0_RKIND
+                        v_temp(i, j) = 0_RKIND
+                    END IF
+                END DO
+            END DO
+            
         END IF
         
     END SUBROUTINE speed_guess
@@ -1118,13 +1163,20 @@ USE global
 
 IMPLICIT NONE
     
-
+    REAL(KIND = RKIND) :: time1, time2
+    
+    CALL CPU_TIME(time1)
     
     CALL initialisation()
     
+    CALL debug(0)
+    
     CALL resolution_loop()
     
-
+    CALL CPU_TIME(time2)
+    
+    PRINT*, 'temps pour la résolution : ', time2-time1
+    
     DEALLOCATE(space_grid%x)
     DEALLOCATE(space_grid%y)
     DEALLOCATE(space_grid%borders)
@@ -1132,6 +1184,7 @@ IMPLICIT NONE
     DEALLOCATE(v)
     DEALLOCATE(a)
     DEALLOCATE(a_loc)
+    DEALLOCATE(a_opti)
     DEALLOCATE(b)
     DEALLOCATE(p)
     DEALLOCATE(p_vec)
