@@ -26,13 +26,13 @@
 # Vitesse caractéristique
 1.0
 
-# Chosen Scheme ('UR1' pour upwind régressif ou 'CD4' pour CD pour termes convectifs)
+# Chosen Scheme ('UR1' pour upwind régressif ou 'CD4' pour centré ordre 2 ou 'CD2' ordre 2)
 CD2
 
 ## Conditions initiales
 
 # Cavite entrainee ('CE') ou conditions custom ('CC')
-CE
+CC
 
 # Big borders u:
 1.0

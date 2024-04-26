@@ -623,7 +623,6 @@ CONTAINS
         !Nettoie le dossier debug
         CALL EXECUTE_COMMAND_LINE("rm ./debug/*.dat")
         
-        
         t = 0
         
         !récupération des données du problème
@@ -985,7 +984,7 @@ CONTAINS
                 - v(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dx) &
                 + v(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
                 + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
-                    
+                
             END DO
             
             !Schéma centré d'ordre 2 pour les bords
