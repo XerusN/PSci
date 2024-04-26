@@ -852,7 +852,7 @@ CONTAINS
     
     
     
-    !Methode de Jacobi (resolution iterative de systeme lineaire)
+    !Methode de Gauss-Siedel (resolution iterative de systeme lineaire)
     SUBROUTINE gauss_siedel_method()
     
     IMPLICIT NONE
@@ -961,6 +961,122 @@ CONTAINS
         PRINT*, 'Gauss-Siedel :', iteration, ', iterations | integrale(p) = ', integral
         
     END SUBROUTINE gauss_siedel_method
+    
+    
+    
+    !Methode de Jacobi (resolution iterative de systeme lineaire)
+    SUBROUTINE successive_over_relaxation_method()
+    
+    IMPLICIT NONE
+        
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.001     !point d'arret de jacobi
+        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000       !Arret forcé de jacobi
+        REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
+        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        REAL(KIND = RKind) :: sor_coeff
+        
+        sor_coeff = 1.4
+        
+        !CALL CPU_TIME(time1)
+        
+        !Tentative initiale
+        DO j = 1, n_y
+            DO i = 1, n_x
+                p_vec((j-1)*n_x + i) = p(i, j)
+            END DO
+        END DO
+        p_vec_temp(:) = p_vec(:)
+        
+        k_max = n_x*n_y
+        
+        iteration = 0
+        
+        !Integrale de la pression
+        integral = 0_RKIND
+        DO i = 1, n_x
+            DO j = 1, n_y
+                IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
+                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
+                ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
+                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
+                ELSE
+                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy
+                END IF
+            END DO
+        END DO
+        integral = integral/(l_x*l_y)
+        p_vec(:) = p_vec(:) - integral
+        
+        
+        lower_norm = 1
+        upper_norm = 1
+        DO WHILE (upper_norm/lower_norm > RTol)
+            
+            p_vec_temp(:) = p_vec(:)
+            DO i = 1, k_max
+                IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
+                    p_vec(i) = b(i)
+                    IF (i > 1) THEN
+                        p_vec(i) = p_vec(i) - a_opti(i, 2)*p_vec(i-1)
+                    END IF
+                    IF (i > n_x) THEN
+                        p_vec(i) = p_vec(i) - a_opti(i, 1)*p_vec(i-n_x)
+                    END IF
+                    IF (i < k_max) THEN
+                        p_vec(i) = p_vec(i) - a_opti(i, 4)*p_vec(i+1)
+                    END IF
+                    IF (i <= k_max-n_x) THEN
+                        p_vec(i) = p_vec(i) - a_opti(i, 5)*p_vec(i+n_x)
+                    END IF
+                    p_vec(i) = (1_RKind - sor_coeff)*p_vec_temp(i) + sor_coeff*p_vec(i)/a_opti(i, 3)
+                END IF
+            END DO
+            
+            !Integrale de la pression
+            integral = 0_RKIND
+            DO i = 1, n_x
+                DO j = 1, n_y
+                    IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
+                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
+                    ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
+                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
+                    ELSE
+                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy
+                    END IF
+                END DO
+            END DO
+            integral = integral/(l_x*l_y)
+            !integral = SUM(p_vec(:)*dx*dy)/(l_x*l_y)
+            p_vec(:) = p_vec(:) - integral
+            
+            CALL norm_2(p_vec, lower_norm)
+            jacobi_r(:) = (p_vec(:)-p_vec_temp(:))
+            CALL norm_2(jacobi_r, upper_norm)
+            
+            iteration = iteration + 1
+            IF (iteration >= IterationMax) THEN
+                PRINT*, 'Nombre d iteration max de Surrelaxation atteint (', IterationMax, ' )'
+                STOP
+            END IF
+            
+            ! IF (MOD(iteration, 100) == 0) THEN
+            !     PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
+            ! END IF
+            
+        END DO
+        
+        !CALL CPU_TIME(time2)
+        DO j = 1, n_y
+            DO i = 1, n_x
+                p(i, j) = p_vec((j-1)*n_x+i)
+            END DO
+        END DO
+        
+        !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
+        PRINT*, 'Surrelaxation :', iteration, ', iterations | integrale(p) = ', integral
+        
+    END SUBROUTINE successive_over_relaxation_method
+    
     
     
     SUBROUTINE cd_scheme_2(i, j)
@@ -1149,8 +1265,9 @@ CONTAINS
         CALL fill_b()
 
         !resolution de l'equation de poisson avec méthode de Jacobi
-        CALL jacobi_method()
+        !CALL jacobi_method()
         !CALL gauss_siedel_method()
+        CALL successive_over_relaxation_method()
 
     END SUBROUTINE compute_pressure
     
