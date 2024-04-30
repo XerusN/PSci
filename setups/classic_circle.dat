@@ -27,7 +27,7 @@
 1.0
 
 # Chosen Scheme ('UR1' pour upwind régressif ou 'CD4' pour centré ordre 2 ou 'CD2' ordre 2)
-CD2
+CD4
 
 ## Conditions initiales
 

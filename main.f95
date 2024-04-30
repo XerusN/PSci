@@ -61,7 +61,7 @@ IMPLICIT NONE
     !vecteur b de l'équation de poisson
     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: b
     !Stockage de p sous forme vectorielle et residu de la méthode de jacobi
-    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: p_vec, p_vec_temp, jacobi_r
+    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: p_vec, p_vec_temp, residual, conjugate
     
     !structure qui contient les coordonnées en x et y d'un point du maillage
     TYPE COORDS
@@ -246,7 +246,7 @@ CONTAINS
         WRITE(11, *) 'TITLE = "ETAPE2"'
         WRITE(11, *) 'VARIABLES = "X", "Y", "U", "V", "MAG", "P"'
         WRITE(11, '(1X, A, ES20.13, A, I4, A, I4, A)') 'ZONE T="', t, &
-            '   seconds", I=', n_x, ', J=', n_y, ', DATAPACKING=POINT'
+            '   seconds", I=', n_y, ', J=', n_x, ', DATAPACKING=POINT'
         
         !Ecriture pour chaque position
         DO i = 1, n_x
@@ -291,7 +291,7 @@ CONTAINS
         
     
     
-        !maj à l'Etape 7, 2D
+    !maj à l'Etape 7, 2D
     !subroutine de creation du maillage spatial, contient les coordonnées exactes de chaque pt, en 2D
     SUBROUTINE create_space_grid()
 
@@ -496,8 +496,9 @@ CONTAINS
         ALLOCATE(a_opti(k_max, 5))
         ALLOCATE(p_vec(k_max))
         ALLOCATE(p_vec_temp(k_max))
-        ALLOCATE(jacobi_r(k_max))
+        ALLOCATE(residual(k_max))
         ALLOCATE(b(k_max))
+        ALLOCATE(conjugate(k_max))
         
         
         
@@ -625,9 +626,7 @@ CONTAINS
         
         t = 0
         
-        !récupération des données du problème
-        name = 'input.dat'
-        CALL read_input_file(name)
+        
         
         !création du maillage spatial
         CALL create_space_grid()
@@ -737,6 +736,32 @@ CONTAINS
     END SUBROUTINE norm_2
     
     
+    !Integrale de la pression
+    SUBROUTINE pressure_integral_correction(integral)
+    
+    IMPLICIT NONE
+        
+        REAL(KIND = RKind) :: integral
+        INTEGER(KIND = IKIND) :: i, j
+        
+        integral = 0_RKIND
+        DO i = 1, n_x
+            DO j = 1, n_y
+                IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
+                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
+                ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
+                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
+                ELSE
+                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy
+                END IF
+            END DO
+        END DO
+        integral = integral/(l_x*l_y)
+        p_vec(:) = p_vec(:) - integral
+        
+    END SUBROUTINE pressure_integral_correction
+    
+    
     
     !Methode de Jacobi (resolution iterative de systeme lineaire)
     SUBROUTINE jacobi_method()
@@ -760,71 +785,42 @@ CONTAINS
         
         k_max = n_x*n_y
         
-        jacobi_r(:) = - b(:)
+        residual(:) = - b(:)
         
-        jacobi_r(1:k_max) = jacobi_r(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
-        jacobi_r(2:k_max) = jacobi_r(2:k_max) + a_opti(2:k_max, 2)*p_vec(1:k_max-1)
-        jacobi_r(1:k_max-1) = jacobi_r(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
-        jacobi_r(n_x+1:k_max) = jacobi_r(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
-        jacobi_r(1:k_max-n_x) = jacobi_r(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
+        residual(1:k_max) = residual(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
+        residual(2:k_max) = residual(2:k_max) + a_opti(2:k_max, 2)*p_vec(1:k_max-1)
+        residual(1:k_max-1) = residual(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
+        residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
+        residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
         
         iteration = 0
         
-        !Integrale de la pression
-        integral = 0_RKIND
-        DO i = 1, n_x
-            DO j = 1, n_y
-                IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
-                ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
-                ELSE
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy
-                END IF
-            END DO
-        END DO
-        integral = integral/(l_x*l_y)
-        p_vec(:) = p_vec(:) - integral
-        
+        CALL pressure_integral_correction(integral)
         
         lower_norm = 1
         upper_norm = 1
         DO WHILE (upper_norm/lower_norm > RTol)
+            
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
-                    p_vec(i) = p_vec_temp(i) - jacobi_r(i)/a_opti(i, 3)
+                    p_vec(i) = p_vec_temp(i) - residual(i)/a_opti(i, 3)
                 END IF
             END DO
             
-            !Integrale de la pression
-            integral = 0_RKIND
-            DO i = 1, n_x
-                DO j = 1, n_y
-                    IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
-                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
-                    ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
-                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
-                    ELSE
-                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy
-                    END IF
-                END DO
-            END DO
-            integral = integral/(l_x*l_y)
-            !integral = SUM(p_vec(:)*dx*dy)/(l_x*l_y)
-            p_vec(:) = p_vec(:) - integral
-            
+            CALL pressure_integral_correction(integral)
+
             CALL norm_2(p_vec, lower_norm)
-            jacobi_r(:) = (p_vec(:)-p_vec_temp(:))
-            CALL norm_2(jacobi_r, upper_norm)
+            residual(:) = (p_vec(:)-p_vec_temp(:))
+            CALL norm_2(residual, upper_norm)
             
-            jacobi_r(:) = - b(:)
+            residual(:) = - b(:)
             
-            jacobi_r(1:k_max) = jacobi_r(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
-            jacobi_r(2:k_max) = jacobi_r(2:k_max) + a_opti(2:k_max, 2)*p_vec(1:k_max-1)
-            jacobi_r(1:k_max-1) = jacobi_r(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
-            jacobi_r(n_x+1:k_max) = jacobi_r(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
-            jacobi_r(1:k_max-n_x) = jacobi_r(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
+            residual(1:k_max) = residual(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
+            residual(2:k_max) = residual(2:k_max) + a_opti(2:k_max, 2)*p_vec(1:k_max-1)
+            residual(1:k_max-1) = residual(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
+            residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
+            residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -876,21 +872,7 @@ CONTAINS
         
         iteration = 0
         
-        !Integrale de la pression
-        integral = 0_RKIND
-        DO i = 1, n_x
-            DO j = 1, n_y
-                IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
-                ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
-                ELSE
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy
-                END IF
-            END DO
-        END DO
-        integral = integral/(l_x*l_y)
-        p_vec(:) = p_vec(:) - integral
+        CALL pressure_integral_correction(integral)
         
         
         lower_norm = 1
@@ -917,26 +899,11 @@ CONTAINS
                 END IF
             END DO
             
-            !Integrale de la pression
-            integral = 0_RKIND
-            DO i = 1, n_x
-                DO j = 1, n_y
-                    IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
-                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
-                    ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
-                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
-                    ELSE
-                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy
-                    END IF
-                END DO
-            END DO
-            integral = integral/(l_x*l_y)
-            !integral = SUM(p_vec(:)*dx*dy)/(l_x*l_y)
-            p_vec(:) = p_vec(:) - integral
+            CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
-            jacobi_r(:) = (p_vec(:)-p_vec_temp(:))
-            CALL norm_2(jacobi_r, upper_norm)
+            residual(:) = (p_vec(:)-p_vec_temp(:))
+            CALL norm_2(residual, upper_norm)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -991,21 +958,7 @@ CONTAINS
         
         iteration = 0
         
-        !Integrale de la pression
-        integral = 0_RKIND
-        DO i = 1, n_x
-            DO j = 1, n_y
-                IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
-                ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
-                ELSE
-                    integral = integral + p_vec((j-1)*n_x+i)*dx*dy
-                END IF
-            END DO
-        END DO
-        integral = integral/(l_x*l_y)
-        p_vec(:) = p_vec(:) - integral
+        CALL pressure_integral_correction(integral)
         
         
         lower_norm = 1
@@ -1032,26 +985,11 @@ CONTAINS
                 END IF
             END DO
             
-            !Integrale de la pression
-            integral = 0_RKIND
-            DO i = 1, n_x
-                DO j = 1, n_y
-                    IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
-                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.25_RKind
-                    ELSE IF ((i == 1) .OR. (i == n_x) .OR. (j == 1) .OR. (j == n_y)) THEN
-                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy*0.5_RKind
-                    ELSE
-                        integral = integral + p_vec((j-1)*n_x+i)*dx*dy
-                    END IF
-                END DO
-            END DO
-            integral = integral/(l_x*l_y)
-            !integral = SUM(p_vec(:)*dx*dy)/(l_x*l_y)
-            p_vec(:) = p_vec(:) - integral
+            CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
-            jacobi_r(:) = (p_vec(:)-p_vec_temp(:))
-            CALL norm_2(jacobi_r, upper_norm)
+            residual(:) = (p_vec(:)-p_vec_temp(:))
+            CALL norm_2(residual, upper_norm)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -1079,6 +1017,106 @@ CONTAINS
     
     
     
+    !Methode de Jacobi (resolution iterative de systeme lineaire)
+    SUBROUTINE conjugate_gradient_method()
+    
+    IMPLICIT NONE
+        
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.001     !point d'arret de jacobi
+        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000       !Arret forcé de jacobi
+        REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral, r_norm0, r_norm
+        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        REAL(KIND = RKind) :: alpha, beta
+        
+        !CALL CPU_TIME(time1)
+        
+        !Tentative initiale
+        DO j = 1, n_y
+            DO i = 1, n_x
+                p_vec((j-1)*n_x + i) = p(i, j)
+            END DO
+        END DO
+        p_vec_temp(:) = p_vec(:)
+        
+        k_max = n_x*n_y
+        
+        
+        iteration = 0
+        
+        CALL pressure_integral_correction(integral)
+        
+        residual(:) = b(:) - MATMUL(a, p_vec)
+        conjugate(:) = residual(:)
+        
+        CALL norm_2(residual, r_norm0)
+        r_norm = r_norm0
+        
+        lower_norm = 1
+        upper_norm = 1
+        !DO WHILE (upper_norm/lower_norm > RTol)
+        DO WHILE (r_norm > r_norm0*RTol)
+            
+            p_vec_temp(:) = p_vec(:)
+            
+            ! alpha = DOT_PRODUCT(residual, residual)/DOT_PRODUCT(conjugate, MATMUL(a, conjugate))
+            ! p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
+            ! beta = DOT_PRODUCT(residual, residual)
+            ! residual(:) = residual(:) - alpha*MATMUL(a, conjugate)
+            ! !residual(:) = -MATMUL(a, p_vec) + b(:)
+            
+            ! beta = DOT_PRODUCT(residual, residual)/beta
+            
+            ! conjugate(:) = residual(:) + beta*conjugate(:)
+            
+            alpha = DOT_PRODUCT(residual, residual)/DOT_PRODUCT(conjugate, MATMUL(a, conjugate))
+            p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
+            beta = DOT_PRODUCT(residual, residual)
+            residual(:) = residual(:) - alpha*MATMUL(a, conjugate)
+            !residual(:) = -MATMUL(a, p_vec) + b(:)
+            
+            beta = DOT_PRODUCT(residual, residual)/beta
+            
+            conjugate(:) = residual(:) + beta*conjugate(:)
+            
+            
+            
+            
+            CALL pressure_integral_correction(integral)
+            
+            ! CALL norm_2(p_vec, lower_norm)
+            ! p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            ! CALL norm_2(p_vec_temp, upper_norm)
+            
+            CALL norm_2(residual, r_norm)
+            
+            iteration = iteration + 1
+            IF (iteration >= IterationMax) THEN
+                PRINT*, 'Nombre d iteration max du Gradient conjugue atteint (', IterationMax, ' )'
+                STOP
+            END IF
+            
+            IF (MOD(iteration, 100) == 0) THEN
+                PRINT*, 'iteration = ', iteration, ' | convergence = ', r_norm/r_norm0
+            END IF
+            
+        END DO
+        
+        !CALL CPU_TIME(time2)
+        DO j = 1, n_y
+            DO i = 1, n_x
+                p(i, j) = p_vec((j-1)*n_x+i)
+            END DO
+        END DO
+        
+        !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
+        PRINT*, 'Gradient conjugue :', iteration, ', iterations | integrale(p) = ', integral
+        
+        
+        
+    END SUBROUTINE conjugate_gradient_method
+    
+    
+    
     SUBROUTINE cd_scheme_2(i, j)
     
     IMPLICIT NONE
@@ -1098,7 +1136,7 @@ CONTAINS
         + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
         + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
         
-    END SUBROUTINE
+    END SUBROUTINE cd_scheme_2
     
     
     
@@ -1265,9 +1303,10 @@ CONTAINS
         CALL fill_b()
 
         !resolution de l'equation de poisson avec méthode de Jacobi
-        !CALL jacobi_method()
+        CALL jacobi_method()
         !CALL gauss_siedel_method()
-        CALL successive_over_relaxation_method()
+        !CALL successive_over_relaxation_method()
+        !CALL conjugate_gradient_method()
 
     END SUBROUTINE compute_pressure
     
@@ -1395,6 +1434,10 @@ IMPLICIT NONE
     
     CALL CPU_TIME(time1)
     
+    !récupération des données du problème
+    name = 'input.dat'
+    CALL read_input_file(name)
+    
     CALL initialisation()
     
     CALL debug(0)
@@ -1417,8 +1460,9 @@ IMPLICIT NONE
     DEALLOCATE(p)
     DEALLOCATE(p_vec)
     DEALLOCATE(p_vec_temp)
-    DEALLOCATE(jacobi_r)
+    DEALLOCATE(residual)
     DEALLOCATE(space_grid%grad_x)
     DEALLOCATE(space_grid%grad_y)
+    DEALLOCATE(conjugate)
     
 END PROGRAM main
