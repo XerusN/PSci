@@ -97,6 +97,8 @@ IMPLICIT NONE
     
     TYPE(SETUP_TYPE) :: setup
     
+    REAL(KIND = RKIND) :: mean_iteration, mean_iteration_loc
+    
 CONTAINS
     
 
@@ -392,7 +394,7 @@ CONTAINS
                 
             END DO
         END DO
-        
+
         ! OPEN(11, FILE = 'debug/borders_grid.txt')
         
         ! DO i = 1, n_x
@@ -416,14 +418,22 @@ CONTAINS
             END DO
         END DO
         
-        OPEN(11, FILE = 'debug/borders.txt')
+        ! OPEN(11, FILE = 'debug/borders_grid.txt')
         
-        DO i = 1, n_x
-            WRITE(11, *) space_grid%borders(i, :)
-        END DO
+        ! DO i = 1, n_x
+        !     WRITE(11, *) space_grid%borders(i, :)
+        ! END DO
         
-        CLOSE(11)
-                
+        ! CLOSE(11)
+        
+        ! OPEN(11, FILE = 'debug/borders.txt')
+        
+        ! DO i = 0, n_x+1
+        !     WRITE(11, '(33(ES10.2))') space_grid%grad_y(i, :)
+        ! END DO
+        
+        ! CLOSE(11)
+        
         !j\i     -2  -1  0   +1  +2
             !+2  . | . |128| . | . 
             !+1  . | . | 8 | . | . 
@@ -532,43 +542,53 @@ CONTAINS
                     
                     a(k, k) = -ABS(space_grid%grad_x(i-1, j))/dx - ABS(space_grid%grad_y(i-1, j))/dy
                     a(k, k + 1) = ABS(space_grid%grad_x(i-1, j))/dx
-                    IF (space_grid%grad_y(i-1, j) > 0) THEN
+                    
+                    IF (ABS(space_grid%grad_y(i-1, j)) < 1E-14_RKind) THEN
+                        CONTINUE
+                    ELSE IF (space_grid%grad_y(i-1, j) > 0) THEN
                         a(k, k + n_x) = ABS(space_grid%grad_y(i-1, j))/dy
                     ELSE
                         a(k, k - n_x) = ABS(space_grid%grad_y(i-1, j))/dy
                     END IF
 
                 ELSE IF (MOD(space_grid%borders(i,j), 4)/2 == 1) THEN
-                    
                     a(k, k) = -ABS(space_grid%grad_x(i+1, j))/dx - ABS(space_grid%grad_y(i+1, j))/dy
                     a(k, k - 1) = ABS(space_grid%grad_x(i+1, j))/dx
-                    IF (space_grid%grad_y(i+1, j) > 0) THEN
+                    
+                    IF (ABS(space_grid%grad_y(i+1, j)) < 1E-14_RKind) THEN
+                        CONTINUE
+                    ELSE IF (space_grid%grad_y(i+1, j) > 0) THEN
                         a(k, k + n_x) = ABS(space_grid%grad_y(i+1, j))/dy
                     ELSE
                         a(k, k - n_x) = ABS(space_grid%grad_y(i+1, j))/dy
                     END IF
                     
                 ELSE IF (MOD(space_grid%borders(i,j), 8)/4 == 1) THEN
-                
                     a(k, k) = -ABS(space_grid%grad_x(i, j-1))/dx - ABS(space_grid%grad_y(i, j-1))/dy
                     a(k, k + n_x) = ABS(space_grid%grad_y(i, j-1))/dy
-                    IF (space_grid%grad_x(i, j-1) > 0) THEN
+                    
+                    IF (ABS(space_grid%grad_x(i, j-1)) < 1E-14_RKind) THEN
+                        CONTINUE
+                    ELSE IF (space_grid%grad_x(i, j-1) > 0) THEN
                         a(k, k + 1) = ABS(space_grid%grad_x(i, j-1))/dx
                     ELSE
                         a(k, k - 1) = ABS(space_grid%grad_x(i, j-1))/dx
                     END IF
                     
                 ELSE IF (MOD(space_grid%borders(i,j), 16)/8 == 1) THEN
-                    
                     a(k, k) = -ABS(space_grid%grad_x(i, j+1))/dx - ABS(space_grid%grad_y(i, j+1))/dy
                     a(k, k - n_x) = ABS(space_grid%grad_y(i, j+1))/dy
-                    IF (space_grid%grad_x(i, j+1) > 0) THEN
+                    
+                    IF (ABS(space_grid%grad_x(i, j+1)) < 1E-14_RKind) THEN
+                        CONTINUE
+                    ELSE IF (space_grid%grad_x(i, j+1) > 0) THEN
                         a(k, k + 1) = ABS(space_grid%grad_x(i, j+1))/dx
                     ELSE
                         a(k, k - 1) = ABS(space_grid%grad_x(i, j+1))/dx
                     END IF
                     
                 ELSE 
+                    
                     !sinon on applique les coefficients de l'équation
                     a(k, k) = -2_RKind*(inv_x_2 + inv_y_2)
                     a(k, k + 1) = inv_x_2
@@ -578,13 +598,11 @@ CONTAINS
                 END IF
             END DO
         END DO
-        
         a_opti(:, :) = 0.0_RKind
         DO j = 1, n_y
             DO i = 1, n_x
 
                 k = (j - 1)*n_x + i
-                
                 a_opti(k, 3) = a(k, k)
                 IF (i > 1) THEN
                     a_opti(k, 2) = a(k, k-1)
@@ -592,7 +610,7 @@ CONTAINS
                 IF (i < n_x) THEN
                     a_opti(k, 4) = a(k, k+1)
                 END IF
-                IF (j > 0) THEN
+                IF (j > 1) THEN
                     a_opti(k, 1) = a(k, k-n_x)
                 END IF
                 IF (j < n_y) THEN
@@ -616,7 +634,6 @@ CONTAINS
     
     IMPLICIT NONE
         
-        CHARACTER(LEN = StrLen) :: name
         INTEGER(KIND = IKind) :: i
         
         !Nettoie le dossier output
@@ -842,7 +859,9 @@ CONTAINS
         END DO
         
         !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
-        PRINT*, 'Jacobi :', iteration, ', iterations | integrale(p) = ', integral
+        !PRINT*, 'Jacobi :', iteration, ', iterations | integrale(p) = ', integral
+        
+        mean_iteration_loc = mean_iteration_loc + iteration
         
     END SUBROUTINE jacobi_method
     
@@ -925,7 +944,9 @@ CONTAINS
         END DO
         
         !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
-        PRINT*, 'Gauss-Siedel :', iteration, ', iterations | integrale(p) = ', integral
+        !PRINT*, 'Gauss-Siedel :', iteration, ', iterations | integrale(p) = ', integral
+        
+        mean_iteration_loc = mean_iteration_loc + iteration
         
     END SUBROUTINE gauss_siedel_method
     
@@ -1011,13 +1032,113 @@ CONTAINS
         END DO
         
         !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
-        PRINT*, 'Surrelaxation :', iteration, ', iterations | integrale(p) = ', integral
+        !PRINT*, 'Surrelaxation :', iteration, ', iterations | integrale(p) = ', integral
+        
+        mean_iteration_loc = mean_iteration_loc + iteration
         
     END SUBROUTINE successive_over_relaxation_method
     
     
     
     !Methode de Jacobi (resolution iterative de systeme lineaire)
+    SUBROUTINE steepest_gradient_method()
+    
+    IMPLICIT NONE
+        
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.001     !point d'arret de jacobi
+        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000       !Arret forcé de jacobi
+        REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral, r_norm0, r_norm
+        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        REAL(KIND = RKind) :: alpha, beta
+        
+        !CALL CPU_TIME(time1)
+        
+        !Tentative initiale
+        DO j = 1, n_y
+            DO i = 1, n_x
+                p_vec((j-1)*n_x + i) = p(i, j)
+            END DO
+        END DO
+        p_vec_temp(:) = p_vec(:)
+        
+        k_max = n_x*n_y
+        
+        
+        iteration = 0
+        
+        CALL pressure_integral_correction(integral)
+        
+        residual(:) = b(:) - MATMUL(a, p_vec)
+        conjugate(:) = residual(:)
+        
+        ! CALL norm_2(residual, r_norm0)
+        ! r_norm = r_norm0
+        
+        lower_norm = 1
+        upper_norm = 1
+        !DO WHILE (upper_norm/lower_norm > RTol)
+        DO WHILE (upper_norm/lower_norm > RTol)
+            
+            p_vec_temp(:) = p_vec(:)
+            
+            ! alpha = DOT_PRODUCT(residual, residual)/DOT_PRODUCT(conjugate, MATMUL(a, conjugate))
+            ! p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
+            ! beta = DOT_PRODUCT(residual, residual)
+            ! residual(:) = residual(:) - alpha*MATMUL(a, conjugate)
+            ! !residual(:) = -MATMUL(a, p_vec) + b(:)
+            
+            ! beta = DOT_PRODUCT(residual, residual)/beta
+            
+            ! conjugate(:) = residual(:) + beta*conjugate(:)
+            
+            alpha = DOT_PRODUCT(residual, residual)/DOT_PRODUCT(residual, MATMUL(a, residual))
+            p_vec(:) = p_vec_temp(:) + alpha*residual(:)
+            !beta = DOT_PRODUCT(residual, residual)
+            !residual(:) = residual(:) - alpha*MATMUL(a, conjugate)
+            residual(:) = -MATMUL(a, p_vec) + b(:)
+            
+            !beta = DOT_PRODUCT(residual, residual)/beta
+            
+            conjugate(:) = residual(:)
+            
+            
+            
+            
+            CALL pressure_integral_correction(integral)
+            
+            CALL norm_2(p_vec, lower_norm)
+            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            CALL norm_2(p_vec_temp, upper_norm)
+            
+            iteration = iteration + 1
+            IF (iteration >= IterationMax) THEN
+                PRINT*, 'Nombre d iteration max du Gradient conjugue atteint (', IterationMax, ' )'
+                STOP
+            END IF
+            
+            IF (MOD(iteration, 100) == 0) THEN
+                PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
+            END IF
+            
+        END DO
+        
+        !CALL CPU_TIME(time2)
+        DO j = 1, n_y
+            DO i = 1, n_x
+                p(i, j) = p_vec((j-1)*n_x+i)
+            END DO
+        END DO
+        
+        !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
+        PRINT*, 'Gradient conjugue :', iteration, ', iterations | integrale(p) = ', integral
+        
+        mean_iteration_loc = mean_iteration_loc + iteration
+        
+    END SUBROUTINE steepest_gradient_method
+    
+    
+    
+    !Methode du gradient conjugué
     SUBROUTINE conjugate_gradient_method()
     
     IMPLICIT NONE
@@ -1048,13 +1169,10 @@ CONTAINS
         residual(:) = b(:) - MATMUL(a, p_vec)
         conjugate(:) = residual(:)
         
-        CALL norm_2(residual, r_norm0)
-        r_norm = r_norm0
-        
         lower_norm = 1
         upper_norm = 1
         !DO WHILE (upper_norm/lower_norm > RTol)
-        DO WHILE (r_norm > r_norm0*RTol)
+        DO WHILE (upper_norm/lower_norm > RTol)
             
             p_vec_temp(:) = p_vec(:)
             
@@ -1071,23 +1189,17 @@ CONTAINS
             alpha = DOT_PRODUCT(residual, residual)/DOT_PRODUCT(conjugate, MATMUL(a, conjugate))
             p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
             beta = DOT_PRODUCT(residual, residual)
-            residual(:) = residual(:) - alpha*MATMUL(a, conjugate)
-            !residual(:) = -MATMUL(a, p_vec) + b(:)
+            residual(:) = b(:) - MATMUL(a, p_vec)
             
             beta = DOT_PRODUCT(residual, residual)/beta
             
-            conjugate(:) = residual(:) + beta*conjugate(:)
-            
-            
-            
+            conjugate(:) = conjugate(:) + beta*conjugate(:)
             
             CALL pressure_integral_correction(integral)
             
-            ! CALL norm_2(p_vec, lower_norm)
-            ! p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
-            ! CALL norm_2(p_vec_temp, upper_norm)
-            
-            CALL norm_2(residual, r_norm)
+            CALL norm_2(p_vec, lower_norm)
+            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            CALL norm_2(p_vec_temp, upper_norm)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -1111,7 +1223,7 @@ CONTAINS
         !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
         PRINT*, 'Gradient conjugue :', iteration, ', iterations | integrale(p) = ', integral
         
-        
+        mean_iteration_loc = mean_iteration_loc + iteration
         
     END SUBROUTINE conjugate_gradient_method
     
@@ -1303,10 +1415,12 @@ CONTAINS
         CALL fill_b()
 
         !resolution de l'equation de poisson avec méthode de Jacobi
-        CALL jacobi_method()
+        !CALL jacobi_method()
         !CALL gauss_siedel_method()
         !CALL successive_over_relaxation_method()
-        !CALL conjugate_gradient_method()
+        !CALL steepest_gradient_method()
+        CALL conjugate_gradient_method()
+        
 
     END SUBROUTINE compute_pressure
     
@@ -1411,8 +1525,9 @@ CONTAINS
         DEALLOCATE(u_temp)
         DEALLOCATE(v_temp)
         
+        mean_iteration_loc = mean_iteration_loc/REAL(i, RKind)
+        
     END SUBROUTINE resolution_loop
-    
     
     
     
@@ -1430,7 +1545,84 @@ USE global
 
 IMPLICIT NONE
     
-    REAL(KIND = RKIND) :: time1, time2
+    REAL(KIND = RKIND) :: time1, time2, mean_time
+    INTEGER, DIMENSION(5) :: mesh_size
+    INTEGER :: i, j, nb_tests
+    CHARACTER(LEN = StrLen) :: name
+    
+    
+    mesh_size(1) = 21
+    mesh_size(2) = 31
+    mesh_size(3) = 51
+    mesh_size(4) = 101
+    mesh_size(5) = 201
+    
+    nb_tests = 10
+    
+    
+    
+    ! OPEN(10, FILE = 'benchmark/jacobi_short_10.dat')
+    
+    ! DO i = 1, SIZE(mesh_size)
+        
+    !     mean_time = 0.0_RKind
+    !     mean_iteration = 0.0_RKIND
+        
+    !     DO j = 1, nb_tests
+        
+    !         CALL CPU_TIME(time1)
+            
+    !         !récupération des données du problème
+    !         name = 'input.dat'
+    !         CALL read_input_file(name)
+            
+    !         n_x = mesh_size(i)
+    !         n_y = mesh_size(i)
+    !         t_f = 0.5
+            
+    !         CALL initialisation()
+            
+    !         CALL resolution_loop()
+            
+            
+            
+    !         DEALLOCATE(space_grid%x)
+    !         DEALLOCATE(space_grid%y)
+    !         DEALLOCATE(space_grid%borders)
+    !         DEALLOCATE(u)
+    !         DEALLOCATE(v)
+    !         DEALLOCATE(a)
+    !         DEALLOCATE(a_loc)
+    !         DEALLOCATE(a_opti)
+    !         DEALLOCATE(b)
+    !         DEALLOCATE(p)
+    !         DEALLOCATE(p_vec)
+    !         DEALLOCATE(p_vec_temp)
+    !         DEALLOCATE(residual)
+    !         DEALLOCATE(space_grid%grad_x)
+    !         DEALLOCATE(space_grid%grad_y)
+    !         DEALLOCATE(conjugate)
+            
+    !         CALL CPU_TIME(time2)
+            
+    !         PRINT*, 'mesh = ', n_x, ' | j = ', j
+    !         PRINT*, '-------------------------'
+            
+    !         mean_time = time2 - time1
+    !         mean_iteration = mean_iteration + mean_iteration_loc
+    !         mean_iteration_loc = 0.0_RKind
+            
+    !     END DO
+        
+    !     mean_time = mean_time/REAL(nb_tests, RKind)
+    !     mean_iteration = mean_iteration/REAL(nb_tests, RKind)
+        
+    !     WRITE(10, *) dx, mean_iteration, mean_time
+    ! END DO
+    
+    ! CLOSE(10)
+    
+    
     
     CALL CPU_TIME(time1)
     
@@ -1440,13 +1632,9 @@ IMPLICIT NONE
     
     CALL initialisation()
     
-    CALL debug(0)
-    
     CALL resolution_loop()
     
-    CALL CPU_TIME(time2)
     
-    PRINT*, 'temps pour la résolution : ', time2-time1
     
     DEALLOCATE(space_grid%x)
     DEALLOCATE(space_grid%y)
@@ -1464,5 +1652,9 @@ IMPLICIT NONE
     DEALLOCATE(space_grid%grad_x)
     DEALLOCATE(space_grid%grad_y)
     DEALLOCATE(conjugate)
+    
+    CALL CPU_TIME(time2)
+    
+    PRINT*, 'temps de resolution = ', time2 - time1
     
 END PROGRAM main
