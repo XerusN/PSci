@@ -3,7 +3,7 @@ MODULE global
 IMPLICIT NONE
 
     !definition des tailles des reels(RKind) et des entiers(IKind)
-    INTEGER, PARAMETER :: RKind = SELECTED_REAL_KIND(10,200)
+    INTEGER, PARAMETER :: RKind = SELECTED_REAL_KIND(15,200)
     INTEGER, PARAMETER :: IKind = SELECTED_INT_KIND(5)
     
     !Constante de taille pour le nom des fichiers
@@ -61,7 +61,7 @@ IMPLICIT NONE
     !vecteur b de l'équation de poisson
     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: b
     !Stockage de p sous forme vectorielle et residu de la méthode de jacobi
-    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: p_vec, p_vec_temp, residual, conjugate
+    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: p_vec, p_vec_temp, residual, conjugate, a_mul_conj
     
     !structure qui contient les coordonnées en x et y d'un point du maillage
     TYPE COORDS
@@ -509,6 +509,7 @@ CONTAINS
         ALLOCATE(residual(k_max))
         ALLOCATE(b(k_max))
         ALLOCATE(conjugate(k_max))
+        ALLOCATE(a_mul_conj(k_max))
         
         
         
@@ -620,6 +621,8 @@ CONTAINS
                 ! IF (SUM(a_opti(k, :)) /= 0) THEN
                 !     PRINT*, 'i = ', i, 'j = ', j, SUM(a_opti(k, :))
                 ! END IF
+                
+                ! STOP
                 
             END DO
         END DO
@@ -779,6 +782,17 @@ CONTAINS
     END SUBROUTINE pressure_integral_correction
     
     
+    ! VOIR AVEC LE PROF SI TEMPS, probleme d'allocation
+    ! FUNCTION a_opti_mul(vec)
+    
+    ! IMPLICIT NONE
+        
+    !     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE, INTENT(OUT) :: a_opti_mul
+        
+        
+    ! END FUNCTION a_mul
+    
+    
     
     !Methode de Jacobi (resolution iterative de systeme lineaire)
     SUBROUTINE jacobi_method()
@@ -892,7 +906,6 @@ CONTAINS
         iteration = 0
         
         CALL pressure_integral_correction(integral)
-        
         
         lower_norm = 1
         upper_norm = 1
@@ -1130,7 +1143,7 @@ CONTAINS
         END DO
         
         !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
-        PRINT*, 'Gradient conjugue :', iteration, ', iterations | integrale(p) = ', integral
+        PRINT*, 'Descente du gradient :', iteration, ', iterations | integrale(p) = ', integral
         
         mean_iteration_loc = mean_iteration_loc + iteration
         
@@ -1147,7 +1160,7 @@ CONTAINS
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000       !Arret forcé de jacobi
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral, r_norm0, r_norm
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
-        REAL(KIND = RKind) :: alpha, beta
+        REAL(KIND = RKind) :: alpha, beta, r_r
         
         !CALL CPU_TIME(time1)
         
@@ -1166,40 +1179,67 @@ CONTAINS
         
         CALL pressure_integral_correction(integral)
         
-        residual(:) = b(:) - MATMUL(a, p_vec)
+        residual(:) = b(:)
+        residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
+        residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
+        residual(1:k_max-1) = residual(1:k_max-1) - a_opti(1:k_max-1, 4)*p_vec(2:k_max)
+        residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
+        residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
+        
         conjugate(:) = residual(:)
         
         lower_norm = 1
         upper_norm = 1
         !DO WHILE (upper_norm/lower_norm > RTol)
+        
+        !CALL norm_2(residual, r_norm0)
+        !r_norm = r_norm0
+        !r_r = r_norm*r_norm
+        
         DO WHILE (upper_norm/lower_norm > RTol)
             
             p_vec_temp(:) = p_vec(:)
             
-            ! alpha = DOT_PRODUCT(residual, residual)/DOT_PRODUCT(conjugate, MATMUL(a, conjugate))
-            ! p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
-            ! beta = DOT_PRODUCT(residual, residual)
-            ! residual(:) = residual(:) - alpha*MATMUL(a, conjugate)
-            ! !residual(:) = -MATMUL(a, p_vec) + b(:)
+            !A(:,:)*conjugué(:)
+            a_mul_conj(:) = 0.0_RKind
+            a_mul_conj(1:k_max) = a_mul_conj(1:k_max) + a_opti(1:k_max, 3)*conjugate(1:k_max)
+            a_mul_conj(2:k_max) = a_mul_conj(2:k_max) + a_opti(2:k_max, 2)*conjugate(1:k_max-1)
+            a_mul_conj(1:k_max-1) = a_mul_conj(1:k_max-1) + a_opti(1:k_max-1, 4)*conjugate(2:k_max)
+            a_mul_conj(n_x+1:k_max) = a_mul_conj(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*conjugate(1:k_max-n_x)
+            a_mul_conj(1:k_max-n_x) = a_mul_conj(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*conjugate(1+n_x:k_max)
             
-            ! beta = DOT_PRODUCT(residual, residual)/beta
-            
-            ! conjugate(:) = residual(:) + beta*conjugate(:)
-            
-            alpha = DOT_PRODUCT(residual, residual)/DOT_PRODUCT(conjugate, MATMUL(a, conjugate))
+            !Mise à jour du vecteur solution
+            !alpha = r_r/DOT_PRODUCT(conjugate, a_mul_conj)
+            alpha = DOT_PRODUCT(conjugate, residual)/DOT_PRODUCT(conjugate, a_mul_conj)
             p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
-            beta = DOT_PRODUCT(residual, residual)
-            residual(:) = b(:) - MATMUL(a, p_vec)
             
-            beta = DOT_PRODUCT(residual, residual)/beta
+            !Calcul du résidu
+            residual(:) = b(:)
+            residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
+            residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
+            residual(1:k_max-1) = residual(1:k_max-1) - a_opti(1:k_max-1, 4)*p_vec(2:k_max)
+            residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
+            residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
             
-            conjugate(:) = conjugate(:) + beta*conjugate(:)
             
+            !Mise à jour de la direction pour la nouvelle itération
+            !beta = 1_RKind/r_r
+            !CALL norm_2(residual, r_norm)
+            !r_r = r_norm*r_norm
+            !beta = r_r*beta
+            beta = DOT_PRODUCT(residual, a_mul_conj)/DOT_PRODUCT(conjugate, a_mul_conj)
+            !PRINT*, beta
+            conjugate(:) = residual(:) + beta*conjugate(:)
+            
+            !Rectification via l'intégrale
             CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
+            !PRINT*, 'lower norm', lower_norm
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
             CALL norm_2(p_vec_temp, upper_norm)
+            
+            !CALL norm_2(residual, r_norm)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -1208,7 +1248,7 @@ CONTAINS
             END IF
             
             IF (MOD(iteration, 100) == 0) THEN
-                PRINT*, 'iteration = ', iteration, ' | convergence = ', r_norm/r_norm0
+                PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
             END IF
             
         END DO
@@ -1557,11 +1597,11 @@ IMPLICIT NONE
     mesh_size(4) = 101
     mesh_size(5) = 201
     
-    nb_tests = 10
+    nb_tests = 5
     
     
     
-    ! OPEN(10, FILE = 'benchmark/jacobi_short_10.dat')
+    ! OPEN(12, FILE = 'benchmark/conjugate_short_5.dat')
     
     ! DO i = 1, SIZE(mesh_size)
         
@@ -1602,6 +1642,7 @@ IMPLICIT NONE
     !         DEALLOCATE(space_grid%grad_x)
     !         DEALLOCATE(space_grid%grad_y)
     !         DEALLOCATE(conjugate)
+    !         DEALLOCATE(a_mul_conj)
             
     !         CALL CPU_TIME(time2)
             
@@ -1617,10 +1658,10 @@ IMPLICIT NONE
     !     mean_time = mean_time/REAL(nb_tests, RKind)
     !     mean_iteration = mean_iteration/REAL(nb_tests, RKind)
         
-    !     WRITE(10, *) dx, mean_iteration, mean_time
+    !     WRITE(12, *) dx, mean_iteration, mean_time
     ! END DO
     
-    ! CLOSE(10)
+    ! CLOSE(12)
     
     
     
@@ -1652,6 +1693,7 @@ IMPLICIT NONE
     DEALLOCATE(space_grid%grad_x)
     DEALLOCATE(space_grid%grad_y)
     DEALLOCATE(conjugate)
+    DEALLOCATE(a_mul_conj)
     
     CALL CPU_TIME(time2)
     
