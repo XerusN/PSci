@@ -57,7 +57,7 @@ IMPLICIT NONE
     REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: u_temp, v_temp
     
     !matrice A de l'equation de poisson
-    REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: a, a_loc, a_opti
+    REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: a_opti
     !vecteur b de l'équation de poisson
     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: b
     !Stockage de p sous forme vectorielle et residu de la méthode de jacobi
@@ -497,12 +497,12 @@ CONTAINS
         
         INTEGER(KIND = IKind) :: i, j, k, k_max
         REAL(KIND = RKIND) :: inv_x_2, inv_y_2
+        REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: a
 
         !calcul de la dimension du vecteur solution
         k_max = n_x*n_y
         
         ALLOCATE(a(k_max, k_max))
-        ALLOCATE(a_loc(k_max, k_max))
         ALLOCATE(a_opti(k_max, 5))
         ALLOCATE(p_vec(k_max))
         ALLOCATE(p_vec_temp(k_max))
@@ -626,6 +626,8 @@ CONTAINS
                 
             END DO
         END DO
+        
+        DEALLOCATE(a)
         
     END SUBROUTINE init_a
     
@@ -1681,8 +1683,6 @@ IMPLICIT NONE
     DEALLOCATE(space_grid%borders)
     DEALLOCATE(u)
     DEALLOCATE(v)
-    DEALLOCATE(a)
-    DEALLOCATE(a_loc)
     DEALLOCATE(a_opti)
     DEALLOCATE(b)
     DEALLOCATE(p)
