@@ -1081,41 +1081,41 @@ CONTAINS
         
         CALL pressure_integral_correction(integral)
         
-        residual(:) = b(:) - MATMUL(a, p_vec)
-        conjugate(:) = residual(:)
+        residual(:) = b(:)
+        residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
+        residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
+        residual(1:k_max-1) = residual(1:k_max-1) - a_opti(1:k_max-1, 4)*p_vec(2:k_max)
+        residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
+        residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
         
-        ! CALL norm_2(residual, r_norm0)
-        ! r_norm = r_norm0
+        conjugate(:) = residual(:)
         
         lower_norm = 1
         upper_norm = 1
-        !DO WHILE (upper_norm/lower_norm > RTol)
         DO WHILE (upper_norm/lower_norm > RTol)
             
             p_vec_temp(:) = p_vec(:)
             
-            ! alpha = DOT_PRODUCT(residual, residual)/DOT_PRODUCT(conjugate, MATMUL(a, conjugate))
-            ! p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
-            ! beta = DOT_PRODUCT(residual, residual)
-            ! residual(:) = residual(:) - alpha*MATMUL(a, conjugate)
-            ! !residual(:) = -MATMUL(a, p_vec) + b(:)
+            !A(:,:)*conjugué(:)
+            a_mul_conj(:) = 0.0_RKind
+            a_mul_conj(1:k_max) = a_mul_conj(1:k_max) + a_opti(1:k_max, 3)*conjugate(1:k_max)
+            a_mul_conj(2:k_max) = a_mul_conj(2:k_max) + a_opti(2:k_max, 2)*conjugate(1:k_max-1)
+            a_mul_conj(1:k_max-1) = a_mul_conj(1:k_max-1) + a_opti(1:k_max-1, 4)*conjugate(2:k_max)
+            a_mul_conj(n_x+1:k_max) = a_mul_conj(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*conjugate(1:k_max-n_x)
+            a_mul_conj(1:k_max-n_x) = a_mul_conj(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*conjugate(1+n_x:k_max)
             
-            ! beta = DOT_PRODUCT(residual, residual)/beta
+            !Mise à jour du vecteur solution
+            alpha = DOT_PRODUCT(conjugate, residual)/DOT_PRODUCT(conjugate, a_mul_conj)
+            p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
             
-            ! conjugate(:) = residual(:) + beta*conjugate(:)
-            
-            alpha = DOT_PRODUCT(residual, residual)/DOT_PRODUCT(residual, MATMUL(a, residual))
-            p_vec(:) = p_vec_temp(:) + alpha*residual(:)
-            !beta = DOT_PRODUCT(residual, residual)
-            !residual(:) = residual(:) - alpha*MATMUL(a, conjugate)
-            residual(:) = -MATMUL(a, p_vec) + b(:)
-            
-            !beta = DOT_PRODUCT(residual, residual)/beta
+            residual(:) = b(:)
+            residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
+            residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
+            residual(1:k_max-1) = residual(1:k_max-1) - a_opti(1:k_max-1, 4)*p_vec(2:k_max)
+            residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
+            residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
             
             conjugate(:) = residual(:)
-            
-            
-            
             
             CALL pressure_integral_correction(integral)
             
@@ -1461,7 +1461,6 @@ CONTAINS
         !CALL steepest_gradient_method()
         CALL conjugate_gradient_method()
         
-
     END SUBROUTINE compute_pressure
     
     
