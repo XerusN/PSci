@@ -88,6 +88,7 @@ IMPLICIT NONE
     !Permet de savoir de quelle manière appliquer des conditions initiales
     CHARACTER(LEN = 2) :: initial_conditions
     
+    !Permet de définir les conditions initiales
     TYPE SETUP_TYPE
         REAL(KIND = RKind), DIMENSION(5) :: u, v
         REAL(KIND = RKind), DIMENSION(2, 5) :: poly
@@ -97,12 +98,12 @@ IMPLICIT NONE
     
     TYPE(SETUP_TYPE) :: setup
     
+    !Variables pour le benchmark
     REAL(KIND = RKIND) :: mean_iteration, mean_iteration_loc
     
 CONTAINS
     
 
-    !maj à l'Etape 7, 2D, retiré les variables plus utilisées et ajout du choix de scheme pour les termes convectifs
     SUBROUTINE read_input_file(name)
     IMPLICIT NONE
         
@@ -161,6 +162,7 @@ CONTAINS
         READ(10, *)
         READ(10, *) u_c
         READ(10, *)
+        !La viscosité est calculée pour correspondre au nombre de reynolds choisi
         viscosity = u_c*l_c/re
         
         !Scheme choisi pour termes convectifs
@@ -170,6 +172,7 @@ CONTAINS
         READ(10, *)
         READ(10, *)
         READ(10, *)
+        !Permet de générer des solides à l'intérieur de l'écoulement
         READ(10, *)
         READ(10, *) initial_conditions
         
@@ -229,7 +232,6 @@ CONTAINS
     
     
     
-    !maj à l'Etape 2, 2D
     !subroutine pour l'ecriture des données dans un fichier
     SUBROUTINE write_output_file(iteration)
     IMPLICIT NONE
@@ -265,7 +267,6 @@ CONTAINS
     END SUBROUTINE write_output_file
     
     
-    !maj Etape 2
     !Permet de rapidement tester la valeur de certaines variables
     SUBROUTINE debug(iteration)
     IMPLICIT NONE
@@ -303,8 +304,10 @@ CONTAINS
         INTEGER, DIMENSION(:, :), ALLOCATABLE :: borders_grid
         REAL(KIND = RKIND) :: x, y, poly1, poly2, squares1, squares2
         
+        !Allocation des tableaux liés au maillage spatial
         ALLOCATE(space_grid%x(n_x))
         ALLOCATE(space_grid%y(n_y))
+        !Les tableaux suivant permettent de gérer des géométries internes plus complexes (cercles, carres, polynomes)
         ALLOCATE(space_grid%borders(n_x, n_y))
         ALLOCATE(borders_grid(-1:n_x+2, -1:n_y+2))
         ALLOCATE(space_grid%grad_x(0:n_x+1, 0:n_y+1))
@@ -324,20 +327,14 @@ CONTAINS
             END DO
         END DO
         
+        !Génère les bordures
         borders_grid(:, :) = 0
         borders_grid(-1:0, :) = 1
         borders_grid(n_x+1:n_x+2, :) = 1
         borders_grid(:, -1:0) = 1
         borders_grid(:, n_y+1:n_y+2) = 1
         
-        ! OPEN(11, FILE = 'debug/borders_grid.txt')
-        
-        ! DO i = -1, n_x+2
-        !     WRITE(11, *) borders_grid(i, :)
-        ! END DO
-        
-        ! CLOSE(11)
-        
+        !Attribue les gradients aux surfaces des bords (calcul du vecteur normal à la surface pour pouvoir appliquer les BC de pression)
         space_grid%grad_x(:, :) = 0.0_RKind
         space_grid%grad_y(:, :) = 0.0_RKind
         
@@ -346,6 +343,8 @@ CONTAINS
         space_grid%grad_x(0, :) = 1.0_RKind
         space_grid%grad_x(n_x+1, :) = -1.0_RKind
         
+        !Gère la création des solides à l'intérieur de l'écoulement en fonction des conditions choisies (fonctions)
+        !Calcul des normales aux surfaces
         DO j = 1, n_y
             y = space_grid%y(j)
             DO i = 1, n_x
@@ -394,15 +393,8 @@ CONTAINS
                 
             END DO
         END DO
-
-        ! OPEN(11, FILE = 'debug/borders_grid.txt')
         
-        ! DO i = 1, n_x
-        !     WRITE(11, *) borders_grid(i, :)
-        ! END DO
-        
-        ! CLOSE(11)
-        
+        !Tableau définissant la positions des bords proches
         DO j = 1, n_y
             space_grid%borders(:, j) = borders_grid(0:n_x-1, j)*1 + borders_grid(-1:n_x-1, j)*16 &
             + borders_grid(2:n_x+1, j)*2 + borders_grid(3:n_x+2, j)*32 &
@@ -418,22 +410,6 @@ CONTAINS
             END DO
         END DO
         
-        ! OPEN(11, FILE = 'debug/borders_grid.txt')
-        
-        ! DO i = 1, n_x
-        !     WRITE(11, *) space_grid%borders(i, :)
-        ! END DO
-        
-        ! CLOSE(11)
-        
-        ! OPEN(11, FILE = 'debug/borders.txt')
-        
-        ! DO i = 0, n_x+1
-        !     WRITE(11, '(33(ES10.2))') space_grid%grad_y(i, :)
-        ! END DO
-        
-        ! CLOSE(11)
-        
         !j\i     -2  -1  0   +1  +2
             !+2  . | . |128| . | . 
             !+1  . | . | 8 | . | . 
@@ -447,8 +423,7 @@ CONTAINS
     
     
     
-    !maj à l'Etape 6, 2D
-    !Initialisation aux conditions initiales, elles s'appliquent aux deux composantes u et v
+    !Initialisation aux conditions initiales, elles s'appliquent aux deux composantes u et v et à la pression
     SUBROUTINE init_solution()
     IMPLICIT NONE
         
@@ -458,7 +433,7 @@ CONTAINS
         ALLOCATE(v(n_x, n_y))
         ALLOCATE(p(n_x, n_y))
         
-        !Assignation pour chaque position
+        !Assignation pour chaque position en fonction des conditions choisies
         u(:, :) = setup%u(5)
         v(:, :) = setup%v(5)
         p(:, :) = 0_RKind
@@ -473,6 +448,7 @@ CONTAINS
         v(:, 1) = setup%v(3)
         v(:, n_y) = setup%v(4)
         
+        !Si le point est dans un solide, vitesse et pression nulle (la pression en ces points n'est pas utilisée dans la résolution des systèmes)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -483,13 +459,10 @@ CONTAINS
             END DO
         END DO
         
-        
-        
     END SUBROUTINE init_solution
     
     
     
-    !maj à l'étape 4, 2D
     !Création et remplissage de la matrice A et allocation des tableaux nécessaires à Jacobi
     SUBROUTINE init_a()
     
@@ -497,12 +470,11 @@ CONTAINS
         
         INTEGER(KIND = IKind) :: i, j, k, k_max
         REAL(KIND = RKIND) :: inv_x_2, inv_y_2
-        REAL(KIND = RKind), DIMENSION(:, :), ALLOCATABLE :: a
 
         !calcul de la dimension du vecteur solution
         k_max = n_x*n_y
         
-        ALLOCATE(a(k_max, k_max))
+        !Allocation de tous les tableaux nécessaires au calcul du champ de pression
         ALLOCATE(a_opti(k_max, 5))
         ALLOCATE(p_vec(k_max))
         ALLOCATE(p_vec_temp(k_max))
@@ -512,10 +484,6 @@ CONTAINS
         ALLOCATE(a_mul_conj(k_max))
         
         
-        
-        !Remplissage de la matrice A
-        !initialisation
-        a(:, :) = 0
         
         !calcul des coefficients
         inv_x_2 = 1_RKind/(dx**2.0_RKind)
@@ -529,6 +497,14 @@ CONTAINS
             !-2  . | . | 64| . | .
         !
         
+        
+        !La matrice A ne contiendrait que 5 diagonale, par soucis d'optimisation on la reduit donc au tableau ci-dessous (5 colonnes, et k_max lignes)
+        !Pour une grille 200*200 la matrice A pèserait 13Go sur la RAM en double précision, il est donc important de libérer cet espace
+        !De plus ce choix permet de vectoriser facilement les calculs matriciels
+        
+        a_opti(:, :) = 0.0_RKind
+        
+        !L'implementation ci-dessous fonctionne pour des surfaces non plane, c'est pourquoi l'on utilise les vecteurs normaux (ou gradients) aux surfaces
         DO j = 1, n_y
             DO i = 1, n_x
 
@@ -536,98 +512,72 @@ CONTAINS
                 
                 IF (space_grid%borders(i,j) < 0) THEN
                 
-                    a(k, k) = 0_RKind
+                    a_opti(k, 3) = 0_RKind
                     
                 !Conditions limites de dérivée nulle
                 ELSE IF (MOD(space_grid%borders(i,j), 2) == 1) THEN
                     
-                    a(k, k) = -ABS(space_grid%grad_x(i-1, j))/dx - ABS(space_grid%grad_y(i-1, j))/dy
-                    a(k, k + 1) = ABS(space_grid%grad_x(i-1, j))/dx
+                    a_opti(k, 3) = -ABS(space_grid%grad_x(i-1, j))/dx - ABS(space_grid%grad_y(i-1, j))/dy
+                    a_opti(k, 4) = ABS(space_grid%grad_x(i-1, j))/dx
                     
                     IF (ABS(space_grid%grad_y(i-1, j)) < 1E-14_RKind) THEN
                         CONTINUE
                     ELSE IF (space_grid%grad_y(i-1, j) > 0) THEN
-                        a(k, k + n_x) = ABS(space_grid%grad_y(i-1, j))/dy
+                        a_opti(k, 5) = ABS(space_grid%grad_y(i-1, j))/dy
                     ELSE
-                        a(k, k - n_x) = ABS(space_grid%grad_y(i-1, j))/dy
+                        a_opti(k, 1) = ABS(space_grid%grad_y(i-1, j))/dy
                     END IF
 
                 ELSE IF (MOD(space_grid%borders(i,j), 4)/2 == 1) THEN
-                    a(k, k) = -ABS(space_grid%grad_x(i+1, j))/dx - ABS(space_grid%grad_y(i+1, j))/dy
-                    a(k, k - 1) = ABS(space_grid%grad_x(i+1, j))/dx
+                    
+                    a_opti(k, 3) = -ABS(space_grid%grad_x(i+1, j))/dx - ABS(space_grid%grad_y(i+1, j))/dy
+                    a_opti(k, 2) = ABS(space_grid%grad_x(i+1, j))/dx
                     
                     IF (ABS(space_grid%grad_y(i+1, j)) < 1E-14_RKind) THEN
                         CONTINUE
                     ELSE IF (space_grid%grad_y(i+1, j) > 0) THEN
-                        a(k, k + n_x) = ABS(space_grid%grad_y(i+1, j))/dy
+                        a_opti(k, 5) = ABS(space_grid%grad_y(i+1, j))/dy
                     ELSE
-                        a(k, k - n_x) = ABS(space_grid%grad_y(i+1, j))/dy
+                        a_opti(k, 1) = ABS(space_grid%grad_y(i+1, j))/dy
                     END IF
                     
                 ELSE IF (MOD(space_grid%borders(i,j), 8)/4 == 1) THEN
-                    a(k, k) = -ABS(space_grid%grad_x(i, j-1))/dx - ABS(space_grid%grad_y(i, j-1))/dy
-                    a(k, k + n_x) = ABS(space_grid%grad_y(i, j-1))/dy
+                    
+                    a_opti(k, 3) = -ABS(space_grid%grad_x(i, j-1))/dx - ABS(space_grid%grad_y(i, j-1))/dy
+                    a_opti(k, 5) = ABS(space_grid%grad_y(i, j-1))/dy
                     
                     IF (ABS(space_grid%grad_x(i, j-1)) < 1E-14_RKind) THEN
                         CONTINUE
                     ELSE IF (space_grid%grad_x(i, j-1) > 0) THEN
-                        a(k, k + 1) = ABS(space_grid%grad_x(i, j-1))/dx
+                        a_opti(k, 4) = ABS(space_grid%grad_x(i, j-1))/dx
                     ELSE
-                        a(k, k - 1) = ABS(space_grid%grad_x(i, j-1))/dx
+                        a_opti(k, 2) = ABS(space_grid%grad_x(i, j-1))/dx
                     END IF
                     
                 ELSE IF (MOD(space_grid%borders(i,j), 16)/8 == 1) THEN
-                    a(k, k) = -ABS(space_grid%grad_x(i, j+1))/dx - ABS(space_grid%grad_y(i, j+1))/dy
-                    a(k, k - n_x) = ABS(space_grid%grad_y(i, j+1))/dy
+                    
+                    a_opti(k, 3) = -ABS(space_grid%grad_x(i, j+1))/dx - ABS(space_grid%grad_y(i, j+1))/dy
+                    a_opti(k, 1) = ABS(space_grid%grad_y(i, j+1))/dy
                     
                     IF (ABS(space_grid%grad_x(i, j+1)) < 1E-14_RKind) THEN
                         CONTINUE
                     ELSE IF (space_grid%grad_x(i, j+1) > 0) THEN
-                        a(k, k + 1) = ABS(space_grid%grad_x(i, j+1))/dx
+                        a_opti(k, 4) = ABS(space_grid%grad_x(i, j+1))/dx
                     ELSE
-                        a(k, k - 1) = ABS(space_grid%grad_x(i, j+1))/dx
+                        a_opti(k, 2) = ABS(space_grid%grad_x(i, j+1))/dx
                     END IF
                     
                 ELSE 
                     
                     !sinon on applique les coefficients de l'équation
-                    a(k, k) = -2_RKind*(inv_x_2 + inv_y_2)
-                    a(k, k + 1) = inv_x_2
-                    a(k, k - 1) = inv_x_2
-                    a(k, k + n_x) = inv_y_2
-                    a(k, k - n_x) = inv_y_2
+                    a_opti(k, 3) = -2_RKind*(inv_x_2 + inv_y_2)
+                    a_opti(k, 4) = inv_x_2
+                    a_opti(k, 2) = inv_x_2
+                    a_opti(k, 5) = inv_y_2
+                    a_opti(k, 1) = inv_y_2
                 END IF
             END DO
         END DO
-        a_opti(:, :) = 0.0_RKind
-        DO j = 1, n_y
-            DO i = 1, n_x
-
-                k = (j - 1)*n_x + i
-                a_opti(k, 3) = a(k, k)
-                IF (i > 1) THEN
-                    a_opti(k, 2) = a(k, k-1)
-                END IF
-                IF (i < n_x) THEN
-                    a_opti(k, 4) = a(k, k+1)
-                END IF
-                IF (j > 1) THEN
-                    a_opti(k, 1) = a(k, k-n_x)
-                END IF
-                IF (j < n_y) THEN
-                    a_opti(k, 5) = a(k, k+n_x)
-                END IF
-                
-                ! IF (SUM(a_opti(k, :)) /= 0) THEN
-                !     PRINT*, 'i = ', i, 'j = ', j, SUM(a_opti(k, :))
-                ! END IF
-                
-                ! STOP
-                
-            END DO
-        END DO
-        
-        DEALLOCATE(a)
         
     END SUBROUTINE init_a
     
@@ -656,6 +606,7 @@ CONTAINS
         !initalisation de la solution grâce aux conditions initiales
         CALL init_solution()
         
+        !Matrice pour le calcul de la pression
         CALL init_a()
         
         i = 0
@@ -666,7 +617,6 @@ CONTAINS
     
     
     
-    !créé à l'étape 3
     !calcul du pas de temps pour une itération, cfl imposé constant, mais dépend de u ou de v 
     SUBROUTINE compute_time_step()
 
@@ -683,18 +633,19 @@ CONTAINS
         !recherche des u_max, v_max
         DO i = 1, n_x
             DO j = 1, n_y
-                dt_temp = cfl*dx/ABS(u(i,j))     !calcul du minimum potentiel sur u
+                
+                !calcul du minimum potentiel sur v
+                dt_temp = cfl*dx/ABS(u(i,j))
 
                 IF (dt_temp < dt_min) THEN
                     dt_min = dt_temp
-                    !PRINT*, dt_temp, 'u'
                 END IF
-
-                dt_temp = cfl*dy/ABS(v(i,j))     !calcul du minimum potentiel sur v
+                
+                !calcul du minimum potentiel sur v
+                dt_temp = cfl*dy/ABS(v(i,j))
 
                 IF (dt_temp < dt_min) THEN
                     dt_min = dt_temp
-                    !PRINT*, dt_temp, 'v'
                 END IF
             END DO
         END DO
@@ -714,10 +665,9 @@ CONTAINS
         
         k_max = n_x*n_y
         
-        
         DO j = 1, n_y
             DO i = 1, n_x
-
+            
                 k = (j - 1)*n_x + i
                 IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
 
@@ -729,8 +679,9 @@ CONTAINS
                     !valeur de b pour tous les autres points
                     b(k) = (u_temp(i+1, j) - u_temp(i-1, j))/(2_RKind*dx) + (v_temp(i, j+1) - v_temp(i, j-1))/(2_RKind*dy)
                     b(k) = b(k)*density/dt
-                    !PRINT*, i, j, u_temp(i, j), (u_temp(i+1, j) - u_temp(i-1, j)), density/dt
+                    
                 END IF
+                
             END DO
         END DO
         
@@ -738,7 +689,7 @@ CONTAINS
     
     
     
-    !maj à l'Etape 2, 2D!Calcul la norme 2 d'un vecteur
+    !Calcul de la norme d'un vecteur
     SUBROUTINE norm_2(vec, norm)
     
     IMPLICIT NONE
@@ -752,13 +703,12 @@ CONTAINS
         
         norm = SUM(vec(:)**2_RKind)
         
-        
         norm = SQRT(norm)
         
     END SUBROUTINE norm_2
     
     
-    !Integrale de la pression
+    !Integrale de la pression, et correction pour la maintenir nulle
     SUBROUTINE pressure_integral_correction(integral)
     
     IMPLICIT NONE
@@ -784,6 +734,7 @@ CONTAINS
     END SUBROUTINE pressure_integral_correction
     
     
+    
     ! VOIR AVEC LE PROF SI TEMPS, probleme d'allocation
     ! FUNCTION a_opti_mul(vec)
     
@@ -801,12 +752,12 @@ CONTAINS
     
     IMPLICIT NONE
         
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.001     !point d'arret de jacobi
-        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000       !Arret forcé de jacobi
+        !point d'arret de jacobi
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.001
+        !Arret forcé de jacobi
+        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
-        
-        !CALL CPU_TIME(time1)
         
         !Tentative initiale
         DO j = 1, n_y
@@ -814,10 +765,10 @@ CONTAINS
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
-        p_vec_temp(:) = p_vec(:)
         
         k_max = n_x*n_y
         
+        !Calcul du résidu sous forme vectorisée
         residual(:) = - b(:)
         
         residual(1:k_max) = residual(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
@@ -834,6 +785,7 @@ CONTAINS
         upper_norm = 1
         DO WHILE (upper_norm/lower_norm > RTol)
             
+            !Amélioration de la solution
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
@@ -842,11 +794,12 @@ CONTAINS
             END DO
             
             CALL pressure_integral_correction(integral)
-
-            CALL norm_2(p_vec, lower_norm)
-            residual(:) = (p_vec(:)-p_vec_temp(:))
-            CALL norm_2(residual, upper_norm)
             
+            CALL norm_2(p_vec, lower_norm)
+            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            CALL norm_2(p_vec_temp, upper_norm)
+            
+            !Calcul du résidu
             residual(:) = - b(:)
             
             residual(1:k_max) = residual(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
@@ -861,22 +814,18 @@ CONTAINS
                 STOP
             END IF
             
-            ! IF (MOD(iteration, 100) == 0) THEN
-            !     PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
-            ! END IF
-            
         END DO
         
-        !CALL CPU_TIME(time2)
+        !Récupération de la pression dans le tableau 2D
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         
-        !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
-        !PRINT*, 'Jacobi :', iteration, ', iterations | integrale(p) = ', integral
+        PRINT*, 'Jacobi :', iteration, ', iterations | integrale(p) = ', integral
         
+        !Pour le benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
         
     END SUBROUTINE jacobi_method
@@ -888,12 +837,12 @@ CONTAINS
     
     IMPLICIT NONE
         
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.001     !point d'arret de jacobi
-        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000       !Arret forcé de jacobi
+        !point d'arret de la méthode
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.001
+        !Arret forcé de la méthode
+        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
-        
-        !CALL CPU_TIME(time1)
         
         !Tentative initiale
         DO j = 1, n_y
@@ -901,7 +850,6 @@ CONTAINS
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
-        p_vec_temp(:) = p_vec(:)
         
         k_max = n_x*n_y
         
@@ -913,6 +861,7 @@ CONTAINS
         upper_norm = 1
         DO WHILE (upper_norm/lower_norm > RTol)
             
+            !Amélioration de la solution
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
@@ -936,8 +885,8 @@ CONTAINS
             CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
-            residual(:) = (p_vec(:)-p_vec_temp(:))
-            CALL norm_2(residual, upper_norm)
+            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            CALL norm_2(p_vec_temp, upper_norm)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -945,42 +894,40 @@ CONTAINS
                 STOP
             END IF
             
-            ! IF (MOD(iteration, 100) == 0) THEN
-            !     PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
-            ! END IF
-            
         END DO
         
-        !CALL CPU_TIME(time2)
+        !Récupération de la solution dans le tableau 2D
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         
-        !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
-        !PRINT*, 'Gauss-Siedel :', iteration, ', iterations | integrale(p) = ', integral
+        PRINT*, 'Gauss-Siedel :', iteration, ', iterations | integrale(p) = ', integral
         
+        !Pour le benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
         
     END SUBROUTINE gauss_siedel_method
     
     
     
-    !Methode de Jacobi (resolution iterative de systeme lineaire)
+    !Methode de Surrelaxation (resolution iterative de systeme lineaire)
     SUBROUTINE successive_over_relaxation_method()
     
     IMPLICIT NONE
         
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.001     !point d'arret de jacobi
-        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000       !Arret forcé de jacobi
+        !point d'arret de la méthode
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.001
+        !Arret forcé de la méthode
+        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         REAL(KIND = RKind) :: sor_coeff
         
+        !Coefficient de surrelaxation (successive over-relaxation)
+        !Choix arbitraire dépendant du problème traité (0<coeff<2)
         sor_coeff = 1.4
-        
-        !CALL CPU_TIME(time1)
         
         !Tentative initiale
         DO j = 1, n_y
@@ -988,7 +935,6 @@ CONTAINS
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
-        p_vec_temp(:) = p_vec(:)
         
         k_max = n_x*n_y
         
@@ -996,11 +942,11 @@ CONTAINS
         
         CALL pressure_integral_correction(integral)
         
-        
         lower_norm = 1
         upper_norm = 1
         DO WHILE (upper_norm/lower_norm > RTol)
             
+            !Amélioration de la solution
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
@@ -1024,8 +970,8 @@ CONTAINS
             CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
-            residual(:) = (p_vec(:)-p_vec_temp(:))
-            CALL norm_2(residual, upper_norm)
+            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            CALL norm_2(p_vec_temp, upper_norm)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -1033,35 +979,33 @@ CONTAINS
                 STOP
             END IF
             
-            ! IF (MOD(iteration, 100) == 0) THEN
-            !     PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
-            ! END IF
-            
         END DO
         
-        !CALL CPU_TIME(time2)
+        !Récupération de la solution sous forme 2D
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         
-        !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
-        !PRINT*, 'Surrelaxation :', iteration, ', iterations | integrale(p) = ', integral
+        PRINT*, 'Surrelaxation :', iteration, ', iterations | integrale(p) = ', integral
         
+        !Benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
         
     END SUBROUTINE successive_over_relaxation_method
     
     
     
-    !Methode de Jacobi (resolution iterative de systeme lineaire)
+    !Methode de la descente du gradient (resolution iterative de systeme lineaire)
     SUBROUTINE steepest_gradient_method()
     
     IMPLICIT NONE
         
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.001     !point d'arret de jacobi
-        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000       !Arret forcé de jacobi
+        !point d'arret de la méthode
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.001
+        !Arret forcé de la méthode
+        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral, r_norm0, r_norm
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         REAL(KIND = RKind) :: alpha, beta
@@ -1074,7 +1018,6 @@ CONTAINS
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
-        p_vec_temp(:) = p_vec(:)
         
         k_max = n_x*n_y
         
@@ -1083,6 +1026,7 @@ CONTAINS
         
         CALL pressure_integral_correction(integral)
         
+        !Calcul du résidu
         residual(:) = b(:)
         residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
         residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
@@ -1090,6 +1034,7 @@ CONTAINS
         residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
         residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
         
+        !Choix de la première direction
         conjugate(:) = residual(:)
         
         lower_norm = 1
@@ -1106,10 +1051,12 @@ CONTAINS
             a_mul_conj(n_x+1:k_max) = a_mul_conj(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*conjugate(1:k_max-n_x)
             a_mul_conj(1:k_max-n_x) = a_mul_conj(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*conjugate(1+n_x:k_max)
             
-            !Mise à jour du vecteur solution
+            !Choix de la distance à parcourir dans la direction de conjugate
             alpha = DOT_PRODUCT(conjugate, residual)/DOT_PRODUCT(conjugate, a_mul_conj)
+            !Mise à jour du vecteur solution
             p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
             
+            !Calcul du résidu
             residual(:) = b(:)
             residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
             residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
@@ -1117,6 +1064,7 @@ CONTAINS
             residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
             residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
             
+            !Choix de la nouvelle direction
             conjugate(:) = residual(:)
             
             CALL pressure_integral_correction(integral)
@@ -1131,40 +1079,36 @@ CONTAINS
                 STOP
             END IF
             
-            IF (MOD(iteration, 100) == 0) THEN
-                PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
-            END IF
-            
         END DO
         
-        !CALL CPU_TIME(time2)
+        !Récupération du vecteur solution
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         
-        !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
         PRINT*, 'Descente du gradient :', iteration, ', iterations | integrale(p) = ', integral
         
+        !Benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
         
     END SUBROUTINE steepest_gradient_method
     
     
     
-    !Methode du gradient conjugué
+    !Methode du gradient conjugué (méthode itérative)
     SUBROUTINE conjugate_gradient_method()
     
     IMPLICIT NONE
         
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.001     !point d'arret de jacobi
-        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000       !Arret forcé de jacobi
+        !point d'arret de la méthode
+        REAL(KIND = RKind), PARAMETER :: RTol = 0.001
+        !Arret forcé de la méthode
+        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral, r_norm0, r_norm
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         REAL(KIND = RKind) :: alpha, beta, r_r
-        
-        !CALL CPU_TIME(time1)
         
         !Tentative initiale
         DO j = 1, n_y
@@ -1172,7 +1116,6 @@ CONTAINS
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
-        p_vec_temp(:) = p_vec(:)
         
         k_max = n_x*n_y
         
@@ -1181,6 +1124,7 @@ CONTAINS
         
         CALL pressure_integral_correction(integral)
         
+        !Calcul du résidu
         residual(:) = b(:)
         residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
         residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
@@ -1188,15 +1132,11 @@ CONTAINS
         residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
         residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
         
+        !Choix de la direction
         conjugate(:) = residual(:)
         
         lower_norm = 1
         upper_norm = 1
-        !DO WHILE (upper_norm/lower_norm > RTol)
-        
-        !CALL norm_2(residual, r_norm0)
-        !r_norm = r_norm0
-        !r_r = r_norm*r_norm
         
         DO WHILE (upper_norm/lower_norm > RTol)
             
@@ -1210,9 +1150,10 @@ CONTAINS
             a_mul_conj(n_x+1:k_max) = a_mul_conj(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*conjugate(1:k_max-n_x)
             a_mul_conj(1:k_max-n_x) = a_mul_conj(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*conjugate(1+n_x:k_max)
             
-            !Mise à jour du vecteur solution
-            !alpha = r_r/DOT_PRODUCT(conjugate, a_mul_conj)
+            
+            !Choix de la distance, la simplification classique de ce calcul ne fonctionne pas ici à cause des modifications liées à l'intégrale nulle
             alpha = DOT_PRODUCT(conjugate, residual)/DOT_PRODUCT(conjugate, a_mul_conj)
+            !Mise à jour du vecteur solution
             p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
             
             !Calcul du résidu
@@ -1223,25 +1164,18 @@ CONTAINS
             residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
             residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
             
-            
-            !Mise à jour de la direction pour la nouvelle itération
-            !beta = 1_RKind/r_r
-            !CALL norm_2(residual, r_norm)
-            !r_r = r_norm*r_norm
-            !beta = r_r*beta
+            !Choix du décalage vis-à-vis du résidu
+            !La simplification classique de ce calcul ne fonctionne pas ici à cause des modifications liées à l'intégrale nulle
             beta = DOT_PRODUCT(residual, a_mul_conj)/DOT_PRODUCT(conjugate, a_mul_conj)
-            !PRINT*, beta
+            !Mise à jour de la direction
             conjugate(:) = residual(:) + beta*conjugate(:)
             
             !Rectification via l'intégrale
             CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
-            !PRINT*, 'lower norm', lower_norm
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
             CALL norm_2(p_vec_temp, upper_norm)
-            
-            !CALL norm_2(residual, r_norm)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -1249,28 +1183,24 @@ CONTAINS
                 STOP
             END IF
             
-            IF (MOD(iteration, 100) == 0) THEN
-                PRINT*, 'iteration = ', iteration, ' | convergence = ', upper_norm/lower_norm
-            END IF
-            
         END DO
         
-        !CALL CPU_TIME(time2)
+        !Récupération de la pression sous la forme d'un tableau 2D
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         
-        !PRINT*, 'Jacobi for a grid size of ', n_x, ' : ', time2 - time1, ' seconds (', iteration, ' iterations)'
         PRINT*, 'Gradient conjugue :', iteration, ', iterations | integrale(p) = ', integral
         
+        !Benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
         
     END SUBROUTINE conjugate_gradient_method
     
     
-    
+    !Schéma centré d'ordre 2 pour l'estimation de la vitesse
     SUBROUTINE cd_scheme_2(i, j)
     
     IMPLICIT NONE
@@ -1294,13 +1224,14 @@ CONTAINS
     
     
     
-    !calcul du profil de vitesse pour une itération temporelle
+    !Estimation du profil de vitesse pour une itération temporelle
     SUBROUTINE speed_guess()
 
     IMPLICIT NONE
 
-        INTEGER(KIND = IKind) :: i, j !compteur
-        INTEGER(KIND = IKIND) :: upwind_x, upwind_y     !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
+        INTEGER(KIND = IKind) :: i, j
+        !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
+        INTEGER(KIND = IKIND) :: upwind_x, upwind_y
         
         
         !Conditions limites
@@ -1368,9 +1299,6 @@ CONTAINS
         !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
             
-            !calcul du n+1
-            
-            
             DO i = 2, n_x-1
                 CALL cd_scheme_2(i, 2)
                 CALL cd_scheme_2(i, n_y - 1)
@@ -1424,10 +1352,9 @@ CONTAINS
                 END DO
             END DO
             
-        !Calcul avec scheme centré d'ordre 4
+        !Calcul avec scheme centré d'ordre 2
         ELSE IF (scheme == 'CD2') THEN
             
-            !Schéma centré d'ordre 2 pour les bords
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     CALL cd_scheme_2(i, j)
@@ -1443,12 +1370,16 @@ CONTAINS
                 END DO
             END DO
             
+        ELSE
+            
+            PRINT*, 'Mauvaise définition du schema (fichier input.dat)'
+            
         END IF
         
     END SUBROUTINE speed_guess
 
 
-    !Créée Etape 6, résout l'équation de poisson contenant les prédictions de vitesse, pour une itération temporelle
+    !Résout l'équation de poisson contenant les prédictions de vitesse, pour une itération temporelle
     SUBROUTINE compute_pressure()
     
     IMPLICIT NONE
@@ -1456,7 +1387,7 @@ CONTAINS
         !remplissage de b à chaque itération temporelle, là où A est constant
         CALL fill_b()
 
-        !resolution de l'equation de poisson avec méthode de Jacobi
+        !resolution de l'equation de poisson avec une méthode itérative
         !CALL jacobi_method()
         !CALL gauss_siedel_method()
         !CALL successive_over_relaxation_method()
@@ -1466,6 +1397,8 @@ CONTAINS
     END SUBROUTINE compute_pressure
     
     
+    
+    !Corrige la vitesse de façon à satisfaire l'équation de continuité grâce au calcul de la pression
     SUBROUTINE adjust_speed()
     
     IMPLICIT NONE
@@ -1510,7 +1443,7 @@ CONTAINS
     END SUBROUTINE adjust_speed
     
     
-    !maj à l'étape 2, 2D
+    
     !Réalise la boucle temporelle
     SUBROUTINE resolution_loop()
     
@@ -1533,7 +1466,6 @@ CONTAINS
             CALL compute_time_step()
             
             IF (t + dt > t_f) THEN
-                !dt = t_f - t
                 last_iteration = .TRUE.
                 EXIT
             END IF
@@ -1551,16 +1483,13 @@ CONTAINS
             t = t + dt
             
             !écrit dans un fichier toute les frames
-            IF ((MOD(i, frame) == 0) .OR. (last_iteration .EQV. .TRUE.)) THEN
+            IF (MOD(i, frame) == 0) THEN
                 CALL write_output_file(i)
             END IF
             
-            !IF (i>=200 .AND. i <= 210) THEN
-            !    CALL debug(i)
-            !END IF
-            
             PRINT*, 't = ', t
             PRINT*, '-------------------'
+            
         END DO
         
         DEALLOCATE(u_temp)
@@ -1569,14 +1498,7 @@ CONTAINS
         mean_iteration_loc = mean_iteration_loc/REAL(i, RKind)
         
     END SUBROUTINE resolution_loop
-    
-    
-    
-
 END MODULE global
-
-
-
 
 
 
@@ -1591,17 +1513,18 @@ IMPLICIT NONE
     INTEGER :: i, j, nb_tests
     CHARACTER(LEN = StrLen) :: name
     
-    
+    !Taille des maillages pour le benchmark
     mesh_size(1) = 21
     mesh_size(2) = 31
     mesh_size(3) = 51
     mesh_size(4) = 101
     mesh_size(5) = 201
     
+    !nb de calculs à chaque maillage
     nb_tests = 5
     
     
-    
+    ! !Programme de benchmark
     ! OPEN(12, FILE = 'benchmark/conjugate_short_5.dat')
     
     ! DO i = 1, SIZE(mesh_size)
@@ -1665,7 +1588,7 @@ IMPLICIT NONE
     ! CLOSE(12)
     
     
-    
+    !Programme classique
     CALL CPU_TIME(time1)
     
     !récupération des données du problème
@@ -1677,7 +1600,7 @@ IMPLICIT NONE
     CALL resolution_loop()
     
     
-    
+    !Désallocation des variables
     DEALLOCATE(space_grid%x)
     DEALLOCATE(space_grid%y)
     DEALLOCATE(space_grid%borders)
