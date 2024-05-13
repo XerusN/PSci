@@ -1219,7 +1219,7 @@ CONTAINS
         + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
         + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
         + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
-        
+
     END SUBROUTINE cd_scheme_2
     
     
@@ -1261,6 +1261,8 @@ CONTAINS
         IF (scheme == 'UR1') THEN
 
             !calcul du n+1
+            !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(u,v,viscosity,dt,dx,dy,n_y,n_x) SHARED(u_temp, v_temp)
+            !$OMP DO SCHEDULE(dynamic)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     
@@ -1295,19 +1297,30 @@ CONTAINS
                     + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/dy*REAL(1_RKind - upwind_y))
                 END DO
             END DO
+            !$OMP END DO
+            !$OMP END PARALLEL 
+
         
         !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
             
+            !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(u,v,viscosity,dt,dx,dy,n_y,n_x) SHARED(u_temp, v_temp)
+            !$OMP DO SCHEDULE(dynamic)
             DO i = 2, n_x-1
                 CALL cd_scheme_2(i, 2)
                 CALL cd_scheme_2(i, n_y - 1)
             END DO
+            !$OMP END DO
+
+            !$OMP DO SCHEDULE(dynamic) 
             DO j = 3, n_y-2
                 CALL cd_scheme_2(2, j)
                 CALL cd_scheme_2(n_x-1, j)
             END DO
+            !$OMP END DO
             
+            
+            !$OMP DO SCHEDULE(dynamic)
             DO j = 3, n_y-2
                     
                 !Calcul de u
@@ -1333,8 +1346,10 @@ CONTAINS
                 + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
                 
             END DO
+            !$OMP END DO
             
             !Schéma centré d'ordre 2 pour les bords
+            !$OMP DO SCHEDULE(dynamic)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (space_grid%borders(i, j)/16 >= 0) THEN
@@ -1342,7 +1357,9 @@ CONTAINS
                     END IF
                 END DO
             END DO
+            !$OMP END DO
             
+            !$OMP DO SCHEDULE(dynamic)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1351,16 +1368,24 @@ CONTAINS
                     END IF
                 END DO
             END DO
+            !$OMP END DO
+
+            !$OMP END PARALLEL
             
         !Calcul avec scheme centré d'ordre 2
         ELSE IF (scheme == 'CD2') THEN
             
+            !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(u,v,viscosity,dt,dx,dy,n_y,n_x) SHARED(u_temp, v_temp)
+
+            !$OMP DO SCHEDULE(dynamic)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     CALL cd_scheme_2(i, j)
                 END DO
             END DO
-            
+            !$OMP END DO
+
+            !$OMP DO SCHEDULE(dynamic)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1369,7 +1394,9 @@ CONTAINS
                     END IF
                 END DO
             END DO
-            
+            !$OMP END DO
+
+            !$OMP END PARALLEL
         ELSE
             
             PRINT*, 'Mauvaise définition du schema (fichier input.dat)'
@@ -1504,7 +1531,9 @@ END MODULE global
 
 PROGRAM main
 
+!$ use OMP_LIB
 USE global
+
 
 IMPLICIT NONE
     
@@ -1525,7 +1554,7 @@ IMPLICIT NONE
     
     
     ! !Programme de benchmark
-    ! OPEN(12, FILE = 'benchmark/res_benchmark.dat')
+    ! OPEN(12, FILE = 'benchmark_mathis/res_benchmark_OMP.dat')
     
     ! DO i = 1, SIZE(mesh_size)
         
@@ -1542,7 +1571,7 @@ IMPLICIT NONE
             
     !         n_x = mesh_size(i)
     !         n_y = mesh_size(i)
-    !         t_f = 0.5
+    !         t_f = 10.0
             
     !         CALL initialisation()
             
@@ -1555,8 +1584,6 @@ IMPLICIT NONE
     !         DEALLOCATE(space_grid%borders)
     !         DEALLOCATE(u)
     !         DEALLOCATE(v)
-    !         DEALLOCATE(a)
-    !         DEALLOCATE(a_loc)
     !         DEALLOCATE(a_opti)
     !         DEALLOCATE(b)
     !         DEALLOCATE(p)
