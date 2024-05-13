@@ -61,7 +61,7 @@ IMPLICIT NONE
     !vecteur b de l'équation de poisson
     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: b
     !Stockage de p sous forme vectorielle et residu de la méthode de jacobi
-    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: p_vec, p_vec_temp, residual, conjugate, a_mul_conj
+    REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE :: p_vec, p_vec_temp, residual, conjugate, a_mul_conj, a_mul_residual
     
     !structure qui contient les coordonnées en x et y d'un point du maillage
     TYPE COORDS
@@ -482,6 +482,7 @@ CONTAINS
         ALLOCATE(b(k_max))
         ALLOCATE(conjugate(k_max))
         ALLOCATE(a_mul_conj(k_max))
+        ALLOCATE(a_mul_residual(k_max))
         
         
         
@@ -823,7 +824,7 @@ CONTAINS
             END DO
         END DO
         
-        PRINT*, 'Jacobi :', iteration, ', iterations | integrale(p) = ', integral
+        PRINT*, 'Jacobi :', iteration, ' iterations | integrale(p) = ', integral
         
         !Pour le benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
@@ -903,7 +904,7 @@ CONTAINS
             END DO
         END DO
         
-        PRINT*, 'Gauss-Siedel :', iteration, ', iterations | integrale(p) = ', integral
+        PRINT*, 'Gauss-Siedel :', iteration, ' iterations | integrale(p) = ', integral
         
         !Pour le benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
@@ -988,7 +989,7 @@ CONTAINS
             END DO
         END DO
         
-        PRINT*, 'Surrelaxation :', iteration, ', iterations | integrale(p) = ', integral
+        PRINT*, 'Surrelaxation :', iteration, ' iterations | integrale(p) = ', integral
         
         !Benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
@@ -1088,7 +1089,7 @@ CONTAINS
             END DO
         END DO
         
-        PRINT*, 'Descente du gradient :', iteration, ', iterations | integrale(p) = ', integral
+        PRINT*, 'Descente du gradient :', iteration, ' iterations | integrale(p) = ', integral
         
         !Benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
@@ -1122,7 +1123,7 @@ CONTAINS
         
         iteration = 0
         
-        CALL pressure_integral_correction(integral)
+        !CALL pressure_integral_correction(integral)
         
         !Calcul du résidu
         residual(:) = b(:)
@@ -1137,6 +1138,9 @@ CONTAINS
         
         lower_norm = 1
         upper_norm = 1
+        
+        !CALL norm_2(residual, upper_norm)
+        !lower_norm = upper_norm
         
         DO WHILE (upper_norm/lower_norm > RTol)
             
@@ -1164,18 +1168,30 @@ CONTAINS
             residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
             residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
             
+            
+            a_mul_residual(:) = 0.0_RKind
+            a_mul_residual(1:k_max) = a_mul_residual(1:k_max) + a_opti(1:k_max, 3)*residual(1:k_max)
+            a_mul_residual(2:k_max) = a_mul_residual(2:k_max) + a_opti(2:k_max, 2)*residual(1:k_max-1)
+            a_mul_residual(1:k_max-1) = a_mul_residual(1:k_max-1) + a_opti(1:k_max-1, 4)*residual(2:k_max)
+            a_mul_residual(n_x+1:k_max) = a_mul_residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*residual(1:k_max-n_x)
+            a_mul_residual(1:k_max-n_x) = a_mul_residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*residual(1+n_x:k_max)
+            
             !Choix du décalage vis-à-vis du résidu
             !La simplification classique de ce calcul ne fonctionne pas ici à cause des modifications liées à l'intégrale nulle
             beta = DOT_PRODUCT(residual, a_mul_conj)/DOT_PRODUCT(conjugate, a_mul_conj)
+            !beta = -DOT_PRODUCT(conjugate, p_vec_temp(:))/DOT_PRODUCT(conjugate, a_mul_conj)
             !Mise à jour de la direction
             conjugate(:) = residual(:) + beta*conjugate(:)
             
             !Rectification via l'intégrale
             CALL pressure_integral_correction(integral)
             
+            !CALL norm_2(residual, upper_norm)
+            !PRINT*, upper_norm
+            
             CALL norm_2(p_vec, lower_norm)
-            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
-            CALL norm_2(p_vec_temp, upper_norm)
+            a_mul_residual(:) = p_vec(:)-p_vec_temp(:)
+            CALL norm_2(a_mul_residual, upper_norm)
             
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
@@ -1192,7 +1208,7 @@ CONTAINS
             END DO
         END DO
         
-        PRINT*, 'Gradient conjugue :', iteration, ', iterations | integrale(p) = ', integral
+        PRINT*, 'Gradient conjugue :', iteration, ' iterations | integrale(p) = ', integral
         
         !Benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
@@ -1525,7 +1541,7 @@ IMPLICIT NONE
     
     
     ! !Programme de benchmark
-    ! OPEN(12, FILE = 'benchmark/conjugate_short_5.dat')
+    ! OPEN(12, FILE = 'benchmark/test_short.dat')
     
     ! DO i = 1, SIZE(mesh_size)
         
@@ -1555,8 +1571,6 @@ IMPLICIT NONE
     !         DEALLOCATE(space_grid%borders)
     !         DEALLOCATE(u)
     !         DEALLOCATE(v)
-    !         DEALLOCATE(a)
-    !         DEALLOCATE(a_loc)
     !         DEALLOCATE(a_opti)
     !         DEALLOCATE(b)
     !         DEALLOCATE(p)
@@ -1616,6 +1630,7 @@ IMPLICIT NONE
     DEALLOCATE(space_grid%grad_y)
     DEALLOCATE(conjugate)
     DEALLOCATE(a_mul_conj)
+    DEALLOCATE(a_mul_residual)
     
     CALL CPU_TIME(time2)
     
