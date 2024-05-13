@@ -1525,7 +1525,7 @@ IMPLICIT NONE
     
     
     ! !Programme de benchmark
-    ! OPEN(12, FILE = 'benchmark/conjugate_short_5.dat')
+    ! OPEN(12, FILE = 'benchmark/res_benchmark.dat')
     
     ! DO i = 1, SIZE(mesh_size)
         
