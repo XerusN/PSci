@@ -1541,7 +1541,7 @@ IMPLICIT NONE
     
     
     ! !Programme de benchmark
-    ! OPEN(12, FILE = 'benchmark/test_short.dat')
+    ! OPEN(12, FILE = 'benchmark/res_benchmark.dat')
     
     ! DO i = 1, SIZE(mesh_size)
         
