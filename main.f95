@@ -1319,7 +1319,6 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            
             !$OMP DO SCHEDULE(dynamic)
             DO j = 3, n_y-2
                     
@@ -1541,6 +1540,9 @@ IMPLICIT NONE
     INTEGER, DIMENSION(5) :: mesh_size
     INTEGER :: i, j, nb_tests
     CHARACTER(LEN = StrLen) :: name
+
+    PRINT*, 'nombre de procs dispos', omp_get_num_procs()
+    
     
     !Taille des maillages pour le benchmark
     mesh_size(1) = 21
