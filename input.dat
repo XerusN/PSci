@@ -1,13 +1,13 @@
-### Variables Etape, config tourbillons de Von Karman
+### Variables Etape, config cavité entrainée avec cylindre au centre
 
 # n_x n_y
-201 201
+51 51
 
 #t_f
 10.0
 
 # l_x l_y
-4.0 2.0
+1.0 1.0
 
 # frame
 10
@@ -22,40 +22,40 @@
 # Reynolds number
 100
 # Longueur caractéristique
-0.4
+1.0
 # Vitesse caractéristique
 1.0
 
-# Chosen Scheme ('UR1' pour upwind régressif ou 'CD4' pour CD pour termes convectifs)
+# Chosen Scheme ('UR1' pour upwind régressif ou 'CD4' pour centré ordre 2 ou 'CD2' ordre 2)
 CD4
 
 ## Conditions initiales
 
 # Cavite entrainee ('CE') ou conditions custom ('CC')
-CC
+CE
 
 # Big borders u:
 1.0
-1.0 1.0
-1.0
+0.0 0.0
+0.0
 # Big borders v:
 0.0
 0.0 0.0
 0.0
 # Global u, v
-1.0 0.0
+0.0 0.0
 
 [si toutes les conditions géometriques sont inutiles, mettre 0 0 0 0 -1]
 # Obstacles polynomials coeff a, b, c, d, e (a*x^2 + b*x + c*y^2 + d*y <= e) [si certaines conditions inutiles, mettre 0 0 0 0 1]
-1.0 0.0 1.0 0.0 0.04
+1.0 0.0 1.0 0.0 0.02
 0.0 0.0 0.0 0.0 1.0
 # Point de référence des polynomes (x, y)
-1.0 1.0
+0.5 0.5
 
 # Obstacles rectangulaires : a*abs(x) + b*abs(y) <= c [si certaines conditions inutiles, mettre 0 0 1]
 0.0 0.0 1.0
 0.0 0.0 1.0
 # Point de référence (x, y)
-1.0 1.0
+0.5 0.5
 
 ### Des conditions impossibles physiquement resulteront en un résultat absurde, il n'y a aucun avertissement de la part du programme.
