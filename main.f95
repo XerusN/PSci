@@ -827,7 +827,7 @@ CONTAINS
         PRINT*, 'Jacobi :', iteration, ' iterations | integrale(p) = ', integral
         
         !Pour le benchmark
-        mean_iteration_loc = mean_iteration_loc + iteration
+        mean_iteration_loc = iteration
         
     END SUBROUTINE jacobi_method
     
@@ -907,7 +907,7 @@ CONTAINS
         PRINT*, 'Gauss-Siedel :', iteration, ' iterations | integrale(p) = ', integral
         
         !Pour le benchmark
-        mean_iteration_loc = mean_iteration_loc + iteration
+        mean_iteration_loc = iteration
         
     END SUBROUTINE gauss_siedel_method
     
@@ -928,7 +928,7 @@ CONTAINS
         
         !Coefficient de surrelaxation (successive over-relaxation)
         !Choix arbitraire dépendant du problème traité (0<coeff<2)
-        sor_coeff = 1.4
+        sor_coeff = 1.3
         
         !Tentative initiale
         DO j = 1, n_y
@@ -992,7 +992,7 @@ CONTAINS
         PRINT*, 'Surrelaxation :', iteration, ' iterations | integrale(p) = ', integral
         
         !Benchmark
-        mean_iteration_loc = mean_iteration_loc + iteration
+        mean_iteration_loc = iteration
         
     END SUBROUTINE successive_over_relaxation_method
     
@@ -1092,7 +1092,7 @@ CONTAINS
         PRINT*, 'Descente du gradient :', iteration, ' iterations | integrale(p) = ', integral
         
         !Benchmark
-        mean_iteration_loc = mean_iteration_loc + iteration
+        mean_iteration_loc = iteration
         
     END SUBROUTINE steepest_gradient_method
     
@@ -1211,7 +1211,7 @@ CONTAINS
         PRINT*, 'Gradient conjugue :', iteration, ' iterations | integrale(p) = ', integral
         
         !Benchmark
-        mean_iteration_loc = mean_iteration_loc + iteration
+        mean_iteration_loc = iteration
         
     END SUBROUTINE conjugate_gradient_method
     
@@ -1406,9 +1406,9 @@ CONTAINS
         !resolution de l'equation de poisson avec une méthode itérative
         !CALL jacobi_method()
         !CALL gauss_siedel_method()
-        !CALL successive_over_relaxation_method()
+        CALL successive_over_relaxation_method()
         !CALL steepest_gradient_method()
-        CALL conjugate_gradient_method()
+        !CALL conjugate_gradient_method()
         
     END SUBROUTINE compute_pressure
     
@@ -1493,6 +1493,10 @@ CONTAINS
             
             CALL compute_pressure()
             
+            IF (i == 0) THEN
+                mean_iteration = mean_iteration + mean_iteration_loc
+            END IF
+            
             CALL adjust_speed()
             
             i = i + 1
@@ -1510,8 +1514,6 @@ CONTAINS
         
         DEALLOCATE(u_temp)
         DEALLOCATE(v_temp)
-        
-        mean_iteration_loc = mean_iteration_loc/REAL(i, RKind)
         
     END SUBROUTINE resolution_loop
 END MODULE global
@@ -1537,103 +1539,102 @@ IMPLICIT NONE
     mesh_size(5) = 201
     
     !nb de calculs à chaque maillage
-    nb_tests = 5
+    nb_tests = 3
     
     
-    ! !Programme de benchmark
-    ! OPEN(12, FILE = 'benchmark/res_benchmark.dat')
+    !Programme de benchmark
+    OPEN(12, FILE = 'benchmark/relaxation_short_5.dat')
     
-    ! DO i = 1, SIZE(mesh_size)
+    DO i = 1, SIZE(mesh_size)
         
-    !     mean_time = 0.0_RKind
-    !     mean_iteration = 0.0_RKIND
+        mean_time = 0.0_RKind
+        mean_iteration = 0.0_RKIND
         
-    !     DO j = 1, nb_tests
+        DO j = 1, nb_tests
         
-    !         CALL CPU_TIME(time1)
+            CALL CPU_TIME(time1)
             
-    !         !récupération des données du problème
-    !         name = 'input.dat'
-    !         CALL read_input_file(name)
+            !récupération des données du problème
+            name = 'input.dat'
+            CALL read_input_file(name)
             
-    !         n_x = mesh_size(i)
-    !         n_y = mesh_size(i)
-    !         t_f = 0.5
+            n_x = mesh_size(i)
+            n_y = mesh_size(i)
+            t_f = 0.5
             
-    !         CALL initialisation()
+            CALL initialisation()
             
-    !         CALL resolution_loop()
+            CALL resolution_loop()
             
             
             
-    !         DEALLOCATE(space_grid%x)
-    !         DEALLOCATE(space_grid%y)
-    !         DEALLOCATE(space_grid%borders)
-    !         DEALLOCATE(u)
-    !         DEALLOCATE(v)
-    !         DEALLOCATE(a_opti)
-    !         DEALLOCATE(b)
-    !         DEALLOCATE(p)
-    !         DEALLOCATE(p_vec)
-    !         DEALLOCATE(p_vec_temp)
-    !         DEALLOCATE(residual)
-    !         DEALLOCATE(space_grid%grad_x)
-    !         DEALLOCATE(space_grid%grad_y)
-    !         DEALLOCATE(conjugate)
-    !         DEALLOCATE(a_mul_conj)
+            DEALLOCATE(space_grid%x)
+            DEALLOCATE(space_grid%y)
+            DEALLOCATE(space_grid%borders)
+            DEALLOCATE(u)
+            DEALLOCATE(v)
+            DEALLOCATE(a_opti)
+            DEALLOCATE(b)
+            DEALLOCATE(p)
+            DEALLOCATE(p_vec)
+            DEALLOCATE(p_vec_temp)
+            DEALLOCATE(residual)
+            DEALLOCATE(space_grid%grad_x)
+            DEALLOCATE(space_grid%grad_y)
+            DEALLOCATE(conjugate)
+            DEALLOCATE(a_mul_conj)
+            DEALLOCATE(a_mul_residual)
             
-    !         CALL CPU_TIME(time2)
+            CALL CPU_TIME(time2)
             
-    !         PRINT*, 'mesh = ', n_x, ' | j = ', j
-    !         PRINT*, '-------------------------'
+            PRINT*, 'mesh = ', n_x, ' | j = ', j
+            PRINT*, '-------------------------'
             
-    !         mean_time = time2 - time1
-    !         mean_iteration = mean_iteration + mean_iteration_loc
-    !         mean_iteration_loc = 0.0_RKind
+            mean_time = time2 - time1
             
-    !     END DO
+        END DO
         
-    !     mean_time = mean_time/REAL(nb_tests, RKind)
-    !     mean_iteration = mean_iteration/REAL(nb_tests, RKind)
+        mean_time = mean_time/REAL(nb_tests, RKind)
+        mean_iteration = mean_iteration/REAL(nb_tests, RKind)
         
-    !     WRITE(12, *) dx, mean_iteration, mean_time
-    ! END DO
+        WRITE(12, *) dx, mean_iteration, mean_time
+    END DO
     
-    ! CLOSE(12)
-    
-    
-    !Programme classique
-    CALL CPU_TIME(time1)
-    
-    !récupération des données du problème
-    name = 'input.dat'
-    CALL read_input_file(name)
-    
-    CALL initialisation()
-    
-    CALL resolution_loop()
+    CLOSE(12)
     
     
-    !Désallocation des variables
-    DEALLOCATE(space_grid%x)
-    DEALLOCATE(space_grid%y)
-    DEALLOCATE(space_grid%borders)
-    DEALLOCATE(u)
-    DEALLOCATE(v)
-    DEALLOCATE(a_opti)
-    DEALLOCATE(b)
-    DEALLOCATE(p)
-    DEALLOCATE(p_vec)
-    DEALLOCATE(p_vec_temp)
-    DEALLOCATE(residual)
-    DEALLOCATE(space_grid%grad_x)
-    DEALLOCATE(space_grid%grad_y)
-    DEALLOCATE(conjugate)
-    DEALLOCATE(a_mul_conj)
-    DEALLOCATE(a_mul_residual)
+    ! !Programme classique
+    ! CALL CPU_TIME(time1)
     
-    CALL CPU_TIME(time2)
+    ! !récupération des données du problème
+    ! name = 'input.dat'
+    ! CALL read_input_file(name)
     
-    PRINT*, 'temps de resolution = ', time2 - time1
+    ! CALL initialisation()
+    
+    ! CALL resolution_loop()
+    
+    
+    ! !Désallocation des variables
+    ! DEALLOCATE(space_grid%x)
+    ! DEALLOCATE(space_grid%y)
+    ! DEALLOCATE(space_grid%borders)
+    ! DEALLOCATE(u)
+    ! DEALLOCATE(v)
+    ! DEALLOCATE(a_opti)
+    ! DEALLOCATE(b)
+    ! DEALLOCATE(p)
+    ! DEALLOCATE(p_vec)
+    ! DEALLOCATE(p_vec_temp)
+    ! DEALLOCATE(residual)
+    ! DEALLOCATE(space_grid%grad_x)
+    ! DEALLOCATE(space_grid%grad_y)
+    ! DEALLOCATE(conjugate)
+    ! DEALLOCATE(a_mul_conj)
+    ! DEALLOCATE(a_mul_residual)
+    
+    ! CALL CPU_TIME(time2)
+    
+    ! PRINT*, 'temps de resolution = ', time2 - time1
     
 END PROGRAM main
