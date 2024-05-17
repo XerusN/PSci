@@ -1542,99 +1542,99 @@ IMPLICIT NONE
     nb_tests = 3
     
     
-    !Programme de benchmark
-    OPEN(12, FILE = 'benchmark/relaxation_short_5.dat')
+    ! !Programme de benchmark
+    ! OPEN(12, FILE = 'benchmark/relaxation_short_5.dat')
     
-    DO i = 1, SIZE(mesh_size)
+    ! DO i = 1, SIZE(mesh_size)
         
-        mean_time = 0.0_RKind
-        mean_iteration = 0.0_RKIND
+    !     mean_time = 0.0_RKind
+    !     mean_iteration = 0.0_RKIND
         
-        DO j = 1, nb_tests
+    !     DO j = 1, nb_tests
         
-            CALL CPU_TIME(time1)
+    !         CALL CPU_TIME(time1)
             
-            !récupération des données du problème
-            name = 'input.dat'
-            CALL read_input_file(name)
+    !         !récupération des données du problème
+    !         name = 'input.dat'
+    !         CALL read_input_file(name)
             
-            n_x = mesh_size(i)
-            n_y = mesh_size(i)
-            t_f = 0.5
+    !         n_x = mesh_size(i)
+    !         n_y = mesh_size(i)
+    !         t_f = 0.5
             
-            CALL initialisation()
+    !         CALL initialisation()
             
-            CALL resolution_loop()
+    !         CALL resolution_loop()
             
             
             
-            DEALLOCATE(space_grid%x)
-            DEALLOCATE(space_grid%y)
-            DEALLOCATE(space_grid%borders)
-            DEALLOCATE(u)
-            DEALLOCATE(v)
-            DEALLOCATE(a_opti)
-            DEALLOCATE(b)
-            DEALLOCATE(p)
-            DEALLOCATE(p_vec)
-            DEALLOCATE(p_vec_temp)
-            DEALLOCATE(residual)
-            DEALLOCATE(space_grid%grad_x)
-            DEALLOCATE(space_grid%grad_y)
-            DEALLOCATE(conjugate)
-            DEALLOCATE(a_mul_conj)
-            DEALLOCATE(a_mul_residual)
+    !         DEALLOCATE(space_grid%x)
+    !         DEALLOCATE(space_grid%y)
+    !         DEALLOCATE(space_grid%borders)
+    !         DEALLOCATE(u)
+    !         DEALLOCATE(v)
+    !         DEALLOCATE(a_opti)
+    !         DEALLOCATE(b)
+    !         DEALLOCATE(p)
+    !         DEALLOCATE(p_vec)
+    !         DEALLOCATE(p_vec_temp)
+    !         DEALLOCATE(residual)
+    !         DEALLOCATE(space_grid%grad_x)
+    !         DEALLOCATE(space_grid%grad_y)
+    !         DEALLOCATE(conjugate)
+    !         DEALLOCATE(a_mul_conj)
+    !         DEALLOCATE(a_mul_residual)
             
-            CALL CPU_TIME(time2)
+    !         CALL CPU_TIME(time2)
             
-            PRINT*, 'mesh = ', n_x, ' | j = ', j
-            PRINT*, '-------------------------'
+    !         PRINT*, 'mesh = ', n_x, ' | j = ', j
+    !         PRINT*, '-------------------------'
             
-            mean_time = time2 - time1
+    !         mean_time = time2 - time1
             
-        END DO
+    !     END DO
         
-        mean_time = mean_time/REAL(nb_tests, RKind)
-        mean_iteration = mean_iteration/REAL(nb_tests, RKind)
+    !     mean_time = mean_time/REAL(nb_tests, RKind)
+    !     mean_iteration = mean_iteration/REAL(nb_tests, RKind)
         
-        WRITE(12, *) dx, mean_iteration, mean_time
-    END DO
+    !     WRITE(12, *) dx, mean_iteration, mean_time
+    ! END DO
     
-    CLOSE(12)
-    
-    
-    ! !Programme classique
-    ! CALL CPU_TIME(time1)
-    
-    ! !récupération des données du problème
-    ! name = 'input.dat'
-    ! CALL read_input_file(name)
-    
-    ! CALL initialisation()
-    
-    ! CALL resolution_loop()
+    ! CLOSE(12)
     
     
-    ! !Désallocation des variables
-    ! DEALLOCATE(space_grid%x)
-    ! DEALLOCATE(space_grid%y)
-    ! DEALLOCATE(space_grid%borders)
-    ! DEALLOCATE(u)
-    ! DEALLOCATE(v)
-    ! DEALLOCATE(a_opti)
-    ! DEALLOCATE(b)
-    ! DEALLOCATE(p)
-    ! DEALLOCATE(p_vec)
-    ! DEALLOCATE(p_vec_temp)
-    ! DEALLOCATE(residual)
-    ! DEALLOCATE(space_grid%grad_x)
-    ! DEALLOCATE(space_grid%grad_y)
-    ! DEALLOCATE(conjugate)
-    ! DEALLOCATE(a_mul_conj)
-    ! DEALLOCATE(a_mul_residual)
+    !Programme classique
+    CALL CPU_TIME(time1)
     
-    ! CALL CPU_TIME(time2)
+    !récupération des données du problème
+    name = 'input.dat'
+    CALL read_input_file(name)
     
-    ! PRINT*, 'temps de resolution = ', time2 - time1
+    CALL initialisation()
+    
+    CALL resolution_loop()
+    
+    
+    !Désallocation des variables
+    DEALLOCATE(space_grid%x)
+    DEALLOCATE(space_grid%y)
+    DEALLOCATE(space_grid%borders)
+    DEALLOCATE(u)
+    DEALLOCATE(v)
+    DEALLOCATE(a_opti)
+    DEALLOCATE(b)
+    DEALLOCATE(p)
+    DEALLOCATE(p_vec)
+    DEALLOCATE(p_vec_temp)
+    DEALLOCATE(residual)
+    DEALLOCATE(space_grid%grad_x)
+    DEALLOCATE(space_grid%grad_y)
+    DEALLOCATE(conjugate)
+    DEALLOCATE(a_mul_conj)
+    DEALLOCATE(a_mul_residual)
+    
+    CALL CPU_TIME(time2)
+    
+    PRINT*, 'temps de resolution = ', time2 - time1
     
 END PROGRAM main
