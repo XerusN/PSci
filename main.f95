@@ -13,7 +13,8 @@ IMPLICIT NONE
     
     !-----------------------------------------------------
     
-    
+    !choix du nombre de threads à utiliser
+    INTEGER(KIND = IKIND) :: num_threads
     
     !Variables d'entree
     
@@ -115,6 +116,12 @@ CONTAINS
         
         !Saut des deux premieres lignes
         READ(10, *)
+        READ(10, *)
+
+        !Nombre de threads à utiliser
+        READ(10, *)
+        READ(10, *) num_threads
+        
         READ(10, *)
         
         !Taille du maillage spatial
@@ -395,13 +402,16 @@ CONTAINS
         END DO
         
         !Tableau définissant la positions des bords proches
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             space_grid%borders(:, j) = borders_grid(0:n_x-1, j)*1 + borders_grid(-1:n_x-1, j)*16 &
             + borders_grid(2:n_x+1, j)*2 + borders_grid(3:n_x+2, j)*32 &
             + borders_grid(1:n_x, j-1)*4 + borders_grid(1:n_x, j-2)*64 &
             + borders_grid(1:n_x, j+1)*8 + borders_grid(1:n_x, j+2)*128
         END DO
+        !$OMP END DO
         
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (borders_grid(i, j) == 1) THEN
@@ -409,6 +419,7 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
         
         !j\i     -2  -1  0   +1  +2
             !+2  . | . |128| . | . 
@@ -449,6 +460,7 @@ CONTAINS
         v(:, n_y) = setup%v(4)
         
         !Si le point est dans un solide, vitesse et pression nulle (la pression en ces points n'est pas utilisée dans la résolution des systèmes)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -458,6 +470,7 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
         
     END SUBROUTINE init_solution
     
@@ -626,13 +639,13 @@ CONTAINS
         REAL(KIND = RKIND) :: dt_min, dt_temp
 
         !On cherche le dt le plus contraignant, càd le plus petit
-
+        !$OMP SINGLE
         !initialisation du min en utilisant la condition du fourrier
         dt_min = fo/viscosity*dx**2
 
         !recherche des u_max, v_max
-        DO i = 1, n_x
-            DO j = 1, n_y
+        DO j = 1, n_y
+            DO i = 1, n_x
                 
                 !calcul du minimum potentiel sur v
                 dt_temp = cfl*dx/ABS(u(i,j))
@@ -651,20 +664,23 @@ CONTAINS
         END DO
         
         dt = dt_min
+        !$OMP END SINGLE
         
     END SUBROUTINE compute_time_step
     
     
     
     !remplit le vecteur b (terme de droite de l'equation de poisson)
-    SUBROUTINE fill_b ()
+    SUBROUTINE fill_b()
     
     IMPLICIT NONE
         
         INTEGER(KIND = IKind) :: k_max, i, j, k
         
+        !$OMP SINGLE
         k_max = n_x*n_y
-        
+        !$OMP END SINGLE
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j, k)
         DO j = 1, n_y
             DO i = 1, n_x
             
@@ -684,6 +700,7 @@ CONTAINS
                 
             END DO
         END DO
+        !$OMP END DO
         
     END SUBROUTINE fill_b
     
@@ -699,11 +716,13 @@ CONTAINS
         INTEGER(KIND = IKIND) :: vec_size, i
         REAL(KIND = RKIND) :: norm
         
+        !$OMP SINGLE
         vec_size = SIZE(vec, 1)
         
         norm = SUM(vec(:)**2_RKind)
         
         norm = SQRT(norm)
+        !$OMP END SINGLE
         
     END SUBROUTINE norm_2
     
@@ -718,8 +737,7 @@ CONTAINS
         
         integral = 0_RKIND
 
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec,dx,dy,n_x,n_y) REDUCTION(+:integral)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j) REDUCTION(+:integral)
         DO i = 1, n_x
             DO j = 1, n_y
                 IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
@@ -732,10 +750,11 @@ CONTAINS
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
-
+        
+        !$OMP SINGLE
         integral = integral/(l_x*l_y)
         p_vec(:) = p_vec(:) - integral
+        !$OMP END SINGLE
         
     END SUBROUTINE pressure_integral_correction
     
@@ -766,16 +785,15 @@ CONTAINS
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         
         !Tentative initiale
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p,n_x,n_y) SHARED(p_vec)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
         
+        !$OMP SINGLE
         k_max = n_x*n_y
         
         !Calcul du résidu sous forme vectorisée
@@ -793,20 +811,20 @@ CONTAINS
         
         lower_norm = 1
         upper_norm = 1
+        !$OMP END SINGLE
         DO WHILE (upper_norm/lower_norm > RTol)
             
             !Amélioration de la solution
             p_vec_temp(:) = p_vec(:)
-            !OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec_temp,residual,a_opti,k_max) SHARED(p_vec)
-            !OMP DO SCHEDULE(dynamic)
+            !OMP DO SCHEDULE(dynamic)PRIVATE(i)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
                     p_vec(i) = p_vec_temp(i) - residual(i)/a_opti(i, 3)
                 END IF
             END DO
             !OMP END DO
-            !OMP END PARALLEL
             
+            !$OMP SINGLE
             CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
@@ -827,24 +845,25 @@ CONTAINS
                 PRINT*, 'Nombre d iteration max de Jacobi atteint (', IterationMax, ' )'
                 STOP
             END IF
+            !$OMP END SINGLE
             
         END DO
         
         !Récupération de la pression dans le tableau 2D
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec,n_x,n_y) SHARED(p)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
         
+        !$OMP SINGLE
         PRINT*, 'Jacobi :', iteration, ', iterations | integrale(p) = ', integral
         
         !Pour le benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
+        !$OMP END SINGLE
         
     END SUBROUTINE jacobi_method
     
@@ -863,16 +882,15 @@ CONTAINS
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         
         !Tentative initiale
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p,n_x,n_y) SHARED(p_vec)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
-
+    
+        !$OMP SINGLE
         k_max = n_x*n_y
         
         iteration = 0
@@ -881,8 +899,10 @@ CONTAINS
         
         lower_norm = 1
         upper_norm = 1
+        !$OMP END SINGLE
         DO WHILE (upper_norm/lower_norm > RTol)
             
+            !$OMP SINGLE
             !Amélioration de la solution
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
@@ -915,24 +935,25 @@ CONTAINS
                 PRINT*, 'Nombre d iteration max de Gauss-Siedel atteint (', IterationMax, ' )'
                 STOP
             END IF
+            !$OMP END SINGLE
             
         END DO
         
         !Récupération de la solution dans le tableau 2D
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec,n_x,n_y) SHARED(p)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
         
+        !$OMP SINGLE
         PRINT*, 'Gauss-Siedel :', iteration, ', iterations | integrale(p) = ', integral
         
         !Pour le benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
+        !$OMP END SINGLE
         
     END SUBROUTINE gauss_siedel_method
     
@@ -951,21 +972,22 @@ CONTAINS
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         REAL(KIND = RKind) :: sor_coeff
         
+        !$OMP SINGLE
         !Coefficient de surrelaxation (successive over-relaxation)
         !Choix arbitraire dépendant du problème traité (0<coeff<2)
         sor_coeff = 1.4
+        !$OMP END SINGLE
         
         !Tentative initiale
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p,n_x,n_y) SHARED(p_vec)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
         
+        !$OMP SINGLE
         k_max = n_x*n_y
         
         iteration = 0
@@ -974,6 +996,7 @@ CONTAINS
         
         lower_norm = 1
         upper_norm = 1
+        
         DO WHILE (upper_norm/lower_norm > RTol)
             
             !Amélioration de la solution
@@ -1010,17 +1033,16 @@ CONTAINS
             END IF
             
         END DO
+        !$OMP END SINGLE
         
         !Récupération de la solution sous forme 2D
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec,n_x,n_y) SHARED(p)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
         
         PRINT*, 'Surrelaxation :', iteration, ', iterations | integrale(p) = ', integral
         
@@ -1047,16 +1069,15 @@ CONTAINS
         !CALL CPU_TIME(time1)
         
         !Tentative initiale
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p,n_x,n_y) SHARED(p_vec)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
         
+        !$OMP SINGLE
         k_max = n_x*n_y
         
         
@@ -1118,23 +1139,24 @@ CONTAINS
             END IF
             
         END DO
+        !$OMP END SINGLE
+        
         
         !Récupération du vecteur solution
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(n_x,n_y,p_vec) SHARED(p)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
 
-        
+        !$OMP SINGLE
         PRINT*, 'Descente du gradient :', iteration, ', iterations | integrale(p) = ', integral
         
         !Benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
+        !$OMP END SINGLE
         
     END SUBROUTINE steepest_gradient_method
     
@@ -1154,17 +1176,15 @@ CONTAINS
         REAL(KIND = RKind) :: alpha, beta, r_r
         
         !Tentative initiale
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(n_x,n_y,p) SHARED(p_vec)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
 
-        
+        !$OMP SINGLE
         k_max = n_x*n_y
         
         
@@ -1185,7 +1205,6 @@ CONTAINS
         
         lower_norm = 1
         upper_norm = 1
-        
         DO WHILE (upper_norm/lower_norm > RTol)
             
             p_vec_temp(:) = p_vec(:)
@@ -1232,22 +1251,24 @@ CONTAINS
             END IF
             
         END DO
+        !$OMP END SINGLE
+        
         
         !Récupération de la pression sous la forme d'un tableau 2D
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(n_x,n_y,p_vec) SHARED(p)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
         
+        !$OMP SINGLE
         PRINT*, 'Gradient conjugue :', iteration, ', iterations | integrale(p) = ', integral
         
         !Benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
+        !$OMP END SINGLE
         
     END SUBROUTINE conjugate_gradient_method
     
@@ -1259,6 +1280,7 @@ CONTAINS
         
         INTEGER(KIND = IKind), INTENT(IN) :: i, j
         
+        !$OMP SINGLE
         u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
         + u(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
         + u(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
@@ -1271,7 +1293,8 @@ CONTAINS
         + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
         + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
         + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
-
+        !$OMP END SINGLE
+        
     END SUBROUTINE cd_scheme_2
     
     
@@ -1285,7 +1308,7 @@ CONTAINS
         !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
         INTEGER(KIND = IKIND) :: upwind_x, upwind_y
         
-        
+        !$OMP SINGLE
         !Conditions limites
         u_temp(1, :) = setup%u(1)
         u_temp(n_x, :) = setup%u(2)
@@ -1296,7 +1319,9 @@ CONTAINS
         v_temp(n_x, :) = setup%v(2)
         v_temp(:, 1) = setup%v(3)
         v_temp(:, n_y) = setup%v(4)
+        !$OMP END SINGLE
         
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1306,6 +1331,7 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
         
         
         
@@ -1313,8 +1339,7 @@ CONTAINS
         IF (scheme == 'UR1') THEN
 
             !calcul du n+1
-            !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(u,v,viscosity,dt,dx,dy,n_y,n_x) SHARED(u_temp, v_temp)
-            !$OMP DO SCHEDULE(dynamic)
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     
@@ -1350,28 +1375,26 @@ CONTAINS
                 END DO
             END DO
             !$OMP END DO
-            !$OMP END PARALLEL 
 
         
         !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
             
-            !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(u,v,viscosity,dt,dx,dy,n_y,n_x) SHARED(u_temp, v_temp)
-            !$OMP DO SCHEDULE(dynamic)
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO i = 2, n_x-1
                 CALL cd_scheme_2(i, 2)
                 CALL cd_scheme_2(i, n_y - 1)
             END DO
             !$OMP END DO
 
-            !$OMP DO SCHEDULE(dynamic) 
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 3, n_y-2
                 CALL cd_scheme_2(2, j)
                 CALL cd_scheme_2(n_x-1, j)
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(dynamic)
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 3, n_y-2
                     
                 !Calcul de u
@@ -1400,7 +1423,7 @@ CONTAINS
             !$OMP END DO
             
             !Schéma centré d'ordre 2 pour les bords
-            !$OMP DO SCHEDULE(dynamic)
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (space_grid%borders(i, j)/16 >= 0) THEN
@@ -1410,7 +1433,7 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(dynamic)
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1421,14 +1444,12 @@ CONTAINS
             END DO
             !$OMP END DO
 
-            !$OMP END PARALLEL
             
         !Calcul avec scheme centré d'ordre 2
         ELSE IF (scheme == 'CD2') THEN
             
-            !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(u,v,viscosity,dt,dx,dy,n_y,n_x) SHARED(u_temp, v_temp)
 
-            !$OMP DO SCHEDULE(dynamic)
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     CALL cd_scheme_2(i, j)
@@ -1436,7 +1457,7 @@ CONTAINS
             END DO
             !$OMP END DO
 
-            !$OMP DO SCHEDULE(dynamic)
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1447,7 +1468,6 @@ CONTAINS
             END DO
             !$OMP END DO
 
-            !$OMP END PARALLEL
         ELSE
             
             PRINT*, 'Mauvaise définition du schema (fichier input.dat)'
@@ -1483,6 +1503,7 @@ CONTAINS
         
         INTEGER(KIND = IKind) :: i, j
         
+        !$OMP SINGLE
         !Conditions limites
         u(1, :) = setup%u(1)
         u(n_x, :) = setup%u(2)
@@ -1493,9 +1514,10 @@ CONTAINS
         v(n_x, :) = setup%v(2)
         v(:, 1) = setup%v(3)
         v(:, n_y) = setup%v(4)
+        !$OMP END SINGLE
+
         
-        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(space_grid,density,dt,dx,dy,n_y,n_x,u_temp, v_temp) SHARED(u,v)
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1507,14 +1529,14 @@ CONTAINS
         END DO
         !$OMP END DO
         
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
         DO j = 2, n_y-1
             u(2:n_x-1, j) = u_temp(2:n_x-1, j) - ((p(3:n_x, j) - p(1:n_x-2, j))/(2.0_RKind*dx))*dt/density
             v(2:n_x-1, j) = v_temp(2:n_x-1, j) - ((p(2:n_x-1, j+1) - p(2:n_x-1, j-1))/(2.0_RKind*dy))*dt/density
         END DO
         !$OMP END DO
         
-        !$OMP DO SCHEDULE(dynamic)
+        !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
         DO j = 2, n_y-1
             DO i = 2, n_x-1
                 IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1524,7 +1546,6 @@ CONTAINS
             END DO
         END DO
         !$OMP END DO
-        !$OMP END PARALLEL
         
     END SUBROUTINE adjust_speed
     
@@ -1532,11 +1553,13 @@ CONTAINS
     
     !Réalise la boucle temporelle
     SUBROUTINE resolution_loop()
+
+    !$ use OMP_LIB
     
     IMPLICIT NONE
         
         INTEGER(KIND = IKind), PARAMETER :: NMax = 1000000
-        INTEGER(KIND = IKind) :: i
+        INTEGER(KIND = IKind) :: i, j, k
         LOGICAL :: last_iteration
         
         i = 0
@@ -1545,8 +1568,20 @@ CONTAINS
         !Allocation du tableau permettant de stocker les valeurs intermediaires de calcul
         ALLOCATE(u_temp(n_x, n_y))
         ALLOCATE(v_temp(n_x, n_y))
-        
+
         !Boucle temporelle du calcul
+        !$OMP PARALLEL PRIVATE(i,j,k)
+
+        !$OMP SINGLE
+        PRINT*, 'nombre de procs dispos', omp_get_num_procs()
+
+        IF ((num_threads > omp_get_num_procs()) .OR. (num_threads <= 0)) THEN
+            PRINT*, 'ERREUR, VEUILLEZ RENTREZ UN NOMBRE DE THREADS CORRECT'
+            STOP
+        ELSE 
+            !$ CALL omp_set_num_threads(num_threads)
+        END IF
+
         DO WHILE ((last_iteration .EQV. .FALSE.) .AND. (i < NMax))
             
             CALL compute_time_step()
@@ -1577,6 +1612,8 @@ CONTAINS
             PRINT*, '-------------------'
             
         END DO
+        !$OMP END SINGLE        
+        !$OMP END PARALLEL
         
         DEALLOCATE(u_temp)
         DEALLOCATE(v_temp)
@@ -1590,7 +1627,6 @@ END MODULE global
 
 PROGRAM main
 
-!$ use OMP_LIB
 USE global
 
 
@@ -1601,8 +1637,7 @@ IMPLICIT NONE
     INTEGER :: i, j, nb_tests
     CHARACTER(LEN = StrLen) :: name
 
-    PRINT*, 'nombre de procs dispos', omp_get_num_procs()
-    
+           
     
     !Taille des maillages pour le benchmark
     mesh_size(1) = 21

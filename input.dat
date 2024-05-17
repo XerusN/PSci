@@ -1,5 +1,8 @@
 ### Variables Etape, config cavité entrainée avec cylindre au centre
 
+#num_threads
+12
+
 # n_x n_y
 101 101
 
