@@ -717,6 +717,9 @@ CONTAINS
         INTEGER(KIND = IKIND) :: i, j
         
         integral = 0_RKIND
+
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec,dx,dy,n_x,n_y) REDUCTION(+:integral)
+        !$OMP DO SCHEDULE(dynamic)
         DO i = 1, n_x
             DO j = 1, n_y
                 IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
@@ -728,6 +731,9 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
+
         integral = integral/(l_x*l_y)
         p_vec(:) = p_vec(:) - integral
         
@@ -760,11 +766,15 @@ CONTAINS
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         
         !Tentative initiale
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p,n_x,n_y) SHARED(p_vec)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
         
         k_max = n_x*n_y
         
@@ -787,11 +797,15 @@ CONTAINS
             
             !Amélioration de la solution
             p_vec_temp(:) = p_vec(:)
+            !OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec_temp,residual,a_opti,k_max) SHARED(p_vec)
+            !OMP DO SCHEDULE(dynamic)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
                     p_vec(i) = p_vec_temp(i) - residual(i)/a_opti(i, 3)
                 END IF
             END DO
+            !OMP END DO
+            !OMP END PARALLEL
             
             CALL pressure_integral_correction(integral)
             
@@ -817,11 +831,15 @@ CONTAINS
         END DO
         
         !Récupération de la pression dans le tableau 2D
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec,n_x,n_y) SHARED(p)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
         
         PRINT*, 'Jacobi :', iteration, ', iterations | integrale(p) = ', integral
         
@@ -845,12 +863,16 @@ CONTAINS
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         
         !Tentative initiale
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p,n_x,n_y) SHARED(p_vec)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
-        
+        !$OMP END DO
+        !$OMP END PARALLEL
+
         k_max = n_x*n_y
         
         iteration = 0
@@ -897,11 +919,15 @@ CONTAINS
         END DO
         
         !Récupération de la solution dans le tableau 2D
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec,n_x,n_y) SHARED(p)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
         
         PRINT*, 'Gauss-Siedel :', iteration, ', iterations | integrale(p) = ', integral
         
@@ -930,11 +956,15 @@ CONTAINS
         sor_coeff = 1.4
         
         !Tentative initiale
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p,n_x,n_y) SHARED(p_vec)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
         
         k_max = n_x*n_y
         
@@ -982,11 +1012,15 @@ CONTAINS
         END DO
         
         !Récupération de la solution sous forme 2D
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p_vec,n_x,n_y) SHARED(p)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
         
         PRINT*, 'Surrelaxation :', iteration, ', iterations | integrale(p) = ', integral
         
@@ -1013,11 +1047,15 @@ CONTAINS
         !CALL CPU_TIME(time1)
         
         !Tentative initiale
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(p,n_x,n_y) SHARED(p_vec)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
         
         k_max = n_x*n_y
         
@@ -1082,11 +1120,16 @@ CONTAINS
         END DO
         
         !Récupération du vecteur solution
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(n_x,n_y,p_vec) SHARED(p)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
+
         
         PRINT*, 'Descente du gradient :', iteration, ', iterations | integrale(p) = ', integral
         
@@ -1111,11 +1154,16 @@ CONTAINS
         REAL(KIND = RKind) :: alpha, beta, r_r
         
         !Tentative initiale
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(n_x,n_y,p) SHARED(p_vec)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
+
         
         k_max = n_x*n_y
         
@@ -1186,11 +1234,15 @@ CONTAINS
         END DO
         
         !Récupération de la pression sous la forme d'un tableau 2D
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(n_x,n_y,p_vec) SHARED(p)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
         
         PRINT*, 'Gradient conjugue :', iteration, ', iterations | integrale(p) = ', integral
         
@@ -1442,6 +1494,8 @@ CONTAINS
         v(:, 1) = setup%v(3)
         v(:, n_y) = setup%v(4)
         
+        !$OMP PARALLEL DEFAULT(private) FIRSTPRIVATE(space_grid,density,dt,dx,dy,n_y,n_x,u_temp, v_temp) SHARED(u,v)
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1451,12 +1505,16 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
         
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 2, n_y-1
             u(2:n_x-1, j) = u_temp(2:n_x-1, j) - ((p(3:n_x, j) - p(1:n_x-2, j))/(2.0_RKind*dx))*dt/density
             v(2:n_x-1, j) = v_temp(2:n_x-1, j) - ((p(2:n_x-1, j+1) - p(2:n_x-1, j-1))/(2.0_RKind*dy))*dt/density
         END DO
+        !$OMP END DO
         
+        !$OMP DO SCHEDULE(dynamic)
         DO j = 2, n_y-1
             DO i = 2, n_x-1
                 IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1465,6 +1523,8 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
+        !$OMP END PARALLEL
         
     END SUBROUTINE adjust_speed
     
