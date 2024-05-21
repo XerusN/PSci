@@ -1,10 +1,10 @@
 MODULE global
-
+!$ use OMP_LIB
 IMPLICIT NONE
 
     !definition des tailles des reels(RKind) et des entiers(IKind)
     INTEGER, PARAMETER :: RKind = SELECTED_REAL_KIND(15,200)
-    INTEGER, PARAMETER :: IKind = SELECTED_INT_KIND(5)
+    INTEGER, PARAMETER :: IKind = SELECTED_INT_KIND(8)
     
     !Constante de taille pour le nom des fichiers
     INTEGER, PARAMETER :: StrLen = 40
@@ -246,8 +246,9 @@ CONTAINS
         INTEGER(KIND = IKind), INTENT(IN) :: iteration
         
         CHARACTER(LEN = StrLen) :: name
-        INTEGER(KIND = RKind) :: i, j
+        INTEGER(KIND = IKind) :: i, j
         
+        !$OMP SINGLE
         WRITE(name, '(I0)') iteration
         name = 'output/resTECPLOT_' // TRIM(name) // '.dat'
         
@@ -270,6 +271,7 @@ CONTAINS
         
         !Fermeture du fichier
         CLOSE(11)
+        !$OMP END SINGLE
         
     END SUBROUTINE write_output_file
     
@@ -281,7 +283,7 @@ CONTAINS
         INTEGER(KIND = IKind), INTENT(IN) :: iteration
         
         CHARACTER(LEN = StrLen) :: name
-        INTEGER(KIND = RKind) :: i, j
+        INTEGER(KIND = IKind) :: i, j
         
         WRITE(name, '(I0)') iteration
         name = 'debug/a_opti_' // TRIM(name) // '.dat'
@@ -735,9 +737,11 @@ CONTAINS
         REAL(KIND = RKind) :: integral
         INTEGER(KIND = IKIND) :: i, j
         
+        !$OMP SINGLE
         integral = 0_RKIND
+        ! $OMP END SINGLE
 
-        !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j) REDUCTION(+:integral)
+        ! $OMP DO SCHEDULE(dynamic) PRIVATE(i, j) REDUCTION(+:integral)
         DO i = 1, n_x
             DO j = 1, n_y
                 IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
@@ -749,26 +753,14 @@ CONTAINS
                 END IF
             END DO
         END DO
-        !$OMP END DO
+        ! $OMP END DO
         
-        !$OMP SINGLE
+        ! $OMP SINGLE
         integral = integral/(l_x*l_y)
         p_vec(:) = p_vec(:) - integral
         !$OMP END SINGLE
         
     END SUBROUTINE pressure_integral_correction
-    
-    
-    
-    ! VOIR AVEC LE PROF SI TEMPS, probleme d'allocation
-    ! FUNCTION a_opti_mul(vec)
-    
-    ! IMPLICIT NONE
-        
-    !     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE, INTENT(OUT) :: a_opti_mul
-        
-        
-    ! END FUNCTION a_mul
     
     
     
@@ -782,7 +774,7 @@ CONTAINS
         !Arret forcé de jacobi
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        INTEGER(KIND = IKind) :: i, j, k_max, iteration
         
         !Tentative initiale
         !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j)
@@ -792,6 +784,8 @@ CONTAINS
             END DO
         END DO
         !$OMP END DO
+        
+        !$OMP BARRIER
         
         !$OMP SINGLE
         k_max = n_x*n_y
@@ -804,33 +798,55 @@ CONTAINS
         residual(1:k_max-1) = residual(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
         residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
         residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
-        
+        PRINT*, "iteration ", omp_get_thread_num()
         iteration = 0
+        !$OMP END SINGLE
         
         CALL pressure_integral_correction(integral)
+        !$OMP BARRIER
         
+        !$OMP SINGLE
         lower_norm = 1
         upper_norm = 1
         !$OMP END SINGLE
+        
+        
+        
+        PRINT*, 'ouais1', omp_get_thread_num()
+        
         DO WHILE (upper_norm/lower_norm > RTol)
             
             !Amélioration de la solution
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)
-            !OMP DO SCHEDULE(dynamic)PRIVATE(i)
+            !$OMP END SINGLE
+            PRINT*, 'ouais2', omp_get_thread_num(), iteration
+            
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
                     p_vec(i) = p_vec_temp(i) - residual(i)/a_opti(i, 3)
                 END IF
             END DO
-            !OMP END DO
+            !$OMP END DO
             
-            !$OMP SINGLE
+            !$OMP BARRIER
+            PRINT*, 'ouais3', omp_get_thread_num(), iteration
+            
             CALL pressure_integral_correction(integral)
+            !$OMP BARRIER
             
             CALL norm_2(p_vec, lower_norm)
-            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
-            CALL norm_2(p_vec_temp, upper_norm)
+            !$OMP BARRIER
             
+            !$OMP SINGLE
+            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            !$OMP END SINGLE
+            
+            CALL norm_2(p_vec_temp, upper_norm)
+            !$OMP BARRIER
+            
+            !$OMP SINGLE
             !Calcul du résidu
             residual(:) = - b(:)
             
@@ -879,7 +895,7 @@ CONTAINS
         !Arret forcé de la méthode
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        INTEGER(KIND = IKind) :: i, j, k_max, iteration
         
         !Tentative initiale
         !$OMP DO SCHEDULE(dynamic) PRIVATE(i, j)
@@ -894,9 +910,11 @@ CONTAINS
         k_max = n_x*n_y
         
         iteration = 0
+        !$OMP END SINGLE
         
         CALL pressure_integral_correction(integral)
         
+        !$OMP SINGLE
         lower_norm = 1
         upper_norm = 1
         !$OMP END SINGLE
@@ -923,13 +941,17 @@ CONTAINS
                     p_vec(i) = p_vec(i)/a_opti(i, 3)
                 END IF
             END DO
+            !$OMP END SINGLE
             
             CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            !$OMP END SINGLE
             CALL norm_2(p_vec_temp, upper_norm)
             
+            !$OMP SINGLE
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
                 PRINT*, 'Nombre d iteration max de Gauss-Siedel atteint (', IterationMax, ' )'
@@ -969,7 +991,7 @@ CONTAINS
         !Arret forcé de la méthode
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        INTEGER(KIND = IKind) :: i, j, k_max, iteration
         REAL(KIND = RKind) :: sor_coeff
         
         !$OMP SINGLE
@@ -991,14 +1013,19 @@ CONTAINS
         k_max = n_x*n_y
         
         iteration = 0
+        !$OMP END SINGLE
+        
         
         CALL pressure_integral_correction(integral)
         
+        !$OMP SINGLE
         lower_norm = 1
         upper_norm = 1
+        !$OMP END SINGLE
         
         DO WHILE (upper_norm/lower_norm > RTol)
             
+            !$OMP SINGLE
             !Amélioration de la solution
             p_vec_temp(:) = p_vec(:)
             DO i = 1, k_max
@@ -1019,21 +1046,25 @@ CONTAINS
                     p_vec(i) = (1_RKind - sor_coeff)*p_vec_temp(i) + sor_coeff*p_vec(i)/a_opti(i, 3)
                 END IF
             END DO
+            !$OMP END SINGLE
             
             CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            !$OMP END SINGLE
             CALL norm_2(p_vec_temp, upper_norm)
             
+            !$OMP SINGLE
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
                 PRINT*, 'Nombre d iteration max de Surrelaxation atteint (', IterationMax, ' )'
                 STOP
             END IF
+            !$OMP END SINGLE
             
         END DO
-        !$OMP END SINGLE
         
         !Récupération de la solution sous forme 2D
         !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
@@ -1044,10 +1075,12 @@ CONTAINS
         END DO
         !$OMP END DO
         
+        !$OMP SINGLE
         PRINT*, 'Surrelaxation :', iteration, ', iterations | integrale(p) = ', integral
         
         !Benchmark
         mean_iteration_loc = mean_iteration_loc + iteration
+        !$OMP END SINGLE
         
     END SUBROUTINE successive_over_relaxation_method
     
@@ -1063,7 +1096,7 @@ CONTAINS
         !Arret forcé de la méthode
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral, r_norm0, r_norm
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        INTEGER(KIND = IKind) :: i, j, k_max, iteration
         REAL(KIND = RKind) :: alpha, beta
         
         !CALL CPU_TIME(time1)
@@ -1082,9 +1115,11 @@ CONTAINS
         
         
         iteration = 0
+        !$OMP END SINGLE
         
         CALL pressure_integral_correction(integral)
         
+        !$OMP SINGLE
         !Calcul du résidu
         residual(:) = b(:)
         residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
@@ -1098,8 +1133,11 @@ CONTAINS
         
         lower_norm = 1
         upper_norm = 1
+        !$OMP END SINGLE
+        
         DO WHILE (upper_norm/lower_norm > RTol)
             
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)
             
             !A(:,:)*conjugué(:)
@@ -1125,22 +1163,25 @@ CONTAINS
             
             !Choix de la nouvelle direction
             conjugate(:) = residual(:)
+            !$OMP END SINGLE
             
             CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            !$OMP END SINGLE
             CALL norm_2(p_vec_temp, upper_norm)
             
+            !$OMP SINGLE
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
                 PRINT*, 'Nombre d iteration max du Gradient conjugue atteint (', IterationMax, ' )'
                 STOP
             END IF
+            !$OMP END SINGLE
             
         END DO
-        !$OMP END SINGLE
-        
         
         !Récupération du vecteur solution
         !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
@@ -1172,7 +1213,7 @@ CONTAINS
         !Arret forcé de la méthode
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral, r_norm0, r_norm
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        INTEGER(KIND = IKind) :: i, j, k_max, iteration
         REAL(KIND = RKind) :: alpha, beta, r_r
         
         !Tentative initiale
@@ -1189,9 +1230,11 @@ CONTAINS
         
         
         iteration = 0
+        !$OMP END SINGLE
         
         CALL pressure_integral_correction(integral)
         
+        !$OMP SINGLE
         !Calcul du résidu
         residual(:) = b(:)
         residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
@@ -1205,8 +1248,10 @@ CONTAINS
         
         lower_norm = 1
         upper_norm = 1
+        !$OMP END SINGLE
         DO WHILE (upper_norm/lower_norm > RTol)
             
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)
             
             !A(:,:)*conjugué(:)
@@ -1236,22 +1281,26 @@ CONTAINS
             beta = DOT_PRODUCT(residual, a_mul_conj)/DOT_PRODUCT(conjugate, a_mul_conj)
             !Mise à jour de la direction
             conjugate(:) = residual(:) + beta*conjugate(:)
+            !$OMP END SINGLE
             
             !Rectification via l'intégrale
             CALL pressure_integral_correction(integral)
             
             CALL norm_2(p_vec, lower_norm)
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            !$OMP END SINGLE
             CALL norm_2(p_vec_temp, upper_norm)
             
+            !$OMP SINGLE
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
                 PRINT*, 'Nombre d iteration max du Gradient conjugue atteint (', IterationMax, ' )'
                 STOP
             END IF
-            
+            !$OMP END SINGLE
+
         END DO
-        !$OMP END SINGLE
         
         
         !Récupération de la pression sous la forme d'un tableau 2D
@@ -1333,13 +1382,13 @@ CONTAINS
         END DO
         !$OMP END DO
         
-        
+        !$OMP BARRIER
         
         !Calcul avec scheme régressif upwind d'ordre 1
         IF (scheme == 'UR1') THEN
-
+            
             !calcul du n+1
-            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
+            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j, upwind_x, upwind_y)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     
@@ -1379,21 +1428,18 @@ CONTAINS
         
         !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
-            
-            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
+            ! $OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO i = 2, n_x-1
                 CALL cd_scheme_2(i, 2)
                 CALL cd_scheme_2(i, n_y - 1)
             END DO
-            !$OMP END DO
-
-            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
+            ! $OMP END DO
+            ! $OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 3, n_y-2
                 CALL cd_scheme_2(2, j)
                 CALL cd_scheme_2(n_x-1, j)
             END DO
-            !$OMP END DO
-            
+            ! $OMP END DO
             !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 3, n_y-2
                     
@@ -1423,7 +1469,7 @@ CONTAINS
             !$OMP END DO
             
             !Schéma centré d'ordre 2 pour les bords
-            !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
+            ! $OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (space_grid%borders(i, j)/16 >= 0) THEN
@@ -1431,7 +1477,8 @@ CONTAINS
                     END IF
                 END DO
             END DO
-            !$OMP END DO
+            ! $OMP END DO
+            !$OMP BARRIER
             
             !$OMP DO SCHEDULE(dynamic) PRIVATE(i,j)
             DO j = 2, n_y-1
@@ -1443,7 +1490,6 @@ CONTAINS
                 END DO
             END DO
             !$OMP END DO
-
             
         !Calcul avec scheme centré d'ordre 2
         ELSE IF (scheme == 'CD2') THEN
@@ -1470,9 +1516,13 @@ CONTAINS
 
         ELSE
             
+            !$OMP SINGLE
             PRINT*, 'Mauvaise définition du schema (fichier input.dat)'
+            !$OMP END SINGLE
             
         END IF
+        
+        !$OMP BARRIER
         
     END SUBROUTINE speed_guess
 
@@ -1481,17 +1531,22 @@ CONTAINS
     SUBROUTINE compute_pressure()
     
     IMPLICIT NONE
-
+    
+        PRINT*, 'yep1', omp_get_thread_num()
+        
         !remplissage de b à chaque itération temporelle, là où A est constant
         CALL fill_b()
-
+        
+        PRINT*, 'yep2', omp_get_thread_num()
         !resolution de l'equation de poisson avec une méthode itérative
-        !CALL jacobi_method()
+        CALL jacobi_method()
         !CALL gauss_siedel_method()
         !CALL successive_over_relaxation_method()
         !CALL steepest_gradient_method()
-        CALL conjugate_gradient_method()
+        !CALL conjugate_gradient_method()
         
+        PRINT*, 'yep3', omp_get_thread_num()
+        !$OMP BARRIER
     END SUBROUTINE compute_pressure
     
     
@@ -1568,11 +1623,7 @@ CONTAINS
         !Allocation du tableau permettant de stocker les valeurs intermediaires de calcul
         ALLOCATE(u_temp(n_x, n_y))
         ALLOCATE(v_temp(n_x, n_y))
-
-        !Boucle temporelle du calcul
-        !$OMP PARALLEL PRIVATE(i,j,k)
-
-        !$OMP SINGLE
+        
         PRINT*, 'nombre de procs dispos', omp_get_num_procs()
 
         IF ((num_threads > omp_get_num_procs()) .OR. (num_threads <= 0)) THEN
@@ -1581,38 +1632,57 @@ CONTAINS
         ELSE 
             !$ CALL omp_set_num_threads(num_threads)
         END IF
-
+        
+        !Boucle temporelle du calcul
+        !$OMP PARALLEL
         DO WHILE ((last_iteration .EQV. .FALSE.) .AND. (i < NMax))
             
+            PRINT*, 'ok5 ', omp_get_thread_num()
+            
             CALL compute_time_step()
+            !$OMP BARRIER
             
             IF (t + dt > t_f) THEN
                 last_iteration = .TRUE.
                 EXIT
             END IF
             
+            !$OMP SINGLE
             PRINT*, 'dt = ', dt
-            
+            !$OMP END SINGLE
             !appelle le calcul pour cette itération
             CALL speed_guess()
             
+            PRINT*, 'ok ', omp_get_thread_num()
+            !$OMP BARRIER
             CALL compute_pressure()
+            !$OMP BARRIER
+            PRINT*, 'ok2'
             
             CALL adjust_speed()
+            !$OMP BARRIER
             
+            !PRINT*, 'ok3'
+            
+            !$OMP SINGLE
             i = i + 1
             t = t + dt
+            !$OMP END SINGLE
             
             !écrit dans un fichier toute les frames
             IF (MOD(i, frame) == 0) THEN
                 CALL write_output_file(i)
             END IF
             
+            !$OMP SINGLE
             PRINT*, 't = ', t
             PRINT*, '-------------------'
+            !$OMP END SINGLE
+            !PRINT*, 'ok4 ', omp_get_thread_num()
+            PRINT*, ''
+            !$OMP BARRIER
             
-        END DO
-        !$OMP END SINGLE        
+        END DO      
         !$OMP END PARALLEL
         
         DEALLOCATE(u_temp)
