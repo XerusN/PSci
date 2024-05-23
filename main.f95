@@ -1,5 +1,5 @@
 MODULE global
-
+!$ USE OMP_LIB
 IMPLICIT NONE
 
     !definition des tailles des reels(RKind) et des entiers(IKind)
@@ -241,6 +241,8 @@ CONTAINS
         CHARACTER(LEN = StrLen) :: name
         INTEGER(KIND = RKind) :: i, j
         
+        !$OMP BARRIER
+        !$OMP SINGLE
         WRITE(name, '(I0)') iteration
         name = 'output/resTECPLOT_' // TRIM(name) // '.dat'
         
@@ -263,6 +265,7 @@ CONTAINS
         
         !Fermeture du fichier
         CLOSE(11)
+        !$OMP END SINGLE
         
     END SUBROUTINE write_output_file
     
@@ -625,7 +628,9 @@ CONTAINS
 
         INTEGER(KIND = IKIND) :: i, j
         REAL(KIND = RKIND) :: dt_min, dt_temp
-
+        
+        !$OMP BARRIER
+        !$OMP SINGLE
         !On cherche le dt le plus contraignant, càd le plus petit
 
         !initialisation du min en utilisant la condition du fourrier
@@ -652,6 +657,7 @@ CONTAINS
         END DO
         
         dt = dt_min
+        !$OMP END SINGLE
         
     END SUBROUTINE compute_time_step
     
@@ -664,8 +670,12 @@ CONTAINS
         
         INTEGER(KIND = IKind) :: k_max, i, j, k
         
+        !$OMP BARRIER
+        !$OMP SINGLE
         k_max = n_x*n_y
+        !$OMP END SINGLE
         
+        !$OMP DO PRIVATE(i, j, k)
         DO j = 1, n_y
             DO i = 1, n_x
             
@@ -685,6 +695,7 @@ CONTAINS
                 
             END DO
         END DO
+        !$OMP END DO
         
     END SUBROUTINE fill_b
     
@@ -700,11 +711,14 @@ CONTAINS
         INTEGER(KIND = IKIND) :: vec_size, i
         REAL(KIND = RKIND) :: norm
         
+        !$OMP BARRIER
+        !$OMP SINGLE
         vec_size = SIZE(vec, 1)
         
         norm = SUM(vec(:)**2_RKind)
         
         norm = SQRT(norm)
+        !$OMP END SINGLE
         
     END SUBROUTINE norm_2
     
@@ -717,6 +731,8 @@ CONTAINS
         REAL(KIND = RKind) :: integral
         INTEGER(KIND = IKIND) :: i, j
         
+        !$OMP BARRIER
+        !$OMP SINGLE
         integral = 0_RKIND
         DO i = 1, n_x
             DO j = 1, n_y
@@ -731,6 +747,7 @@ CONTAINS
         END DO
         integral = integral/(l_x*l_y)
         p_vec(:) = p_vec(:) - integral
+        !$OMP END SINGLE
         
     END SUBROUTINE pressure_integral_correction
     
@@ -760,13 +777,19 @@ CONTAINS
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         
+        !$OMP BARRIER
+        
         !Tentative initiale
+        !$OMP DO PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
+        !$OMP END DO
         
+        !$OMP BARRIER
+        !$OMP SINGLE
         k_max = n_x*n_y
         
         !Calcul du résidu sous forme vectorisée
@@ -779,27 +802,48 @@ CONTAINS
         residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
         
         iteration = 0
+        lower_norm = 1
+        upper_norm = 1
+        !$OMP END SINGLE
         
         CALL pressure_integral_correction(integral)
         
-        lower_norm = 1
-        upper_norm = 1
+        !$OMP BARRIER
+        
         DO WHILE (upper_norm/lower_norm > RTol)
             
+            !$OMP BARRIER
+            
             !Amélioration de la solution
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)
+            !$OMP END SINGLE
+            
+            !$OMP DO PRIVATE(i)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
                     p_vec(i) = p_vec_temp(i) - residual(i)/a_opti(i, 3)
                 END IF
             END DO
+            !$OMP END DO
             
             CALL pressure_integral_correction(integral)
             
+            !$OMP BARRIER
+            
             CALL norm_2(p_vec, lower_norm)
+            
+            !$OMP BARRIER
+            
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            !$OMP END SINGLE
+            
             CALL norm_2(p_vec_temp, upper_norm)
             
+            !$OMP BARRIER
+            
+            !$OMP SINGLE
             !Calcul du résidu
             residual(:) = - b(:)
             
@@ -809,25 +853,37 @@ CONTAINS
             residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
             residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
             
+            
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
                 PRINT*, 'Nombre d iteration max de Jacobi atteint (', IterationMax, ' )'
                 STOP
             END IF
+            !$OMP END SINGLE
             
         END DO
         
+        !$OMP BARRIER
+        
         !Récupération de la pression dans le tableau 2D
+        !$OMP DO PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
+        !$OMP END DO
         
+        !$OMP SINGLE
         PRINT*, 'Jacobi :', iteration, ' iterations | integrale(p) = ', integral
+        
+        PRINT*, "jacobi ", omp_get_thread_num()
+        
         
         !Pour le benchmark
         mean_iteration_loc = iteration
+        !$OMP END SINGLE
+        
         
     END SUBROUTINE jacobi_method
     
@@ -1223,6 +1279,7 @@ CONTAINS
         
         INTEGER(KIND = IKind), INTENT(IN) :: i, j
         
+        !$OMP SINGLE
         u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
         + u(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
         + u(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
@@ -1235,6 +1292,7 @@ CONTAINS
         + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
         + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
         + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
+        !$OMP END SINGLE
         
     END SUBROUTINE cd_scheme_2
     
@@ -1249,7 +1307,9 @@ CONTAINS
         !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
         INTEGER(KIND = IKIND) :: upwind_x, upwind_y
         
+        !$OMP BARRIER
         
+        !$OMP SINGLE
         !Conditions limites
         u_temp(1, :) = setup%u(1)
         u_temp(n_x, :) = setup%u(2)
@@ -1260,7 +1320,9 @@ CONTAINS
         v_temp(n_x, :) = setup%v(2)
         v_temp(:, 1) = setup%v(3)
         v_temp(:, n_y) = setup%v(4)
+        !$OMP END SINGLE
         
+        !$OMP DO PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1270,12 +1332,14 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
         
         
         
         !Calcul avec scheme régressif upwind d'ordre 1
         IF (scheme == 'UR1') THEN
-
+            !$OMP BARRIER
+            !$OMP DO PRIVATE(i, j, upwind_x, upwind_y)
             !calcul du n+1
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
@@ -1311,19 +1375,25 @@ CONTAINS
                     + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/dy*REAL(1_RKind - upwind_y))
                 END DO
             END DO
+            !$OMP END DO
         
         !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
-            
+            ! $OMP BARRIER
+            ! $OMP DO PRIVATE(i)
             DO i = 2, n_x-1
                 CALL cd_scheme_2(i, 2)
                 CALL cd_scheme_2(i, n_y - 1)
             END DO
+            ! $OMP END DO
+            ! $OMP DO PRIVATE(j)
             DO j = 3, n_y-2
                 CALL cd_scheme_2(2, j)
                 CALL cd_scheme_2(n_x-1, j)
             END DO
+            ! $OMP END DO
             
+            !$OMP DO PRIVATE(j)
             DO j = 3, n_y-2
                     
                 !Calcul de u
@@ -1349,7 +1419,9 @@ CONTAINS
                 + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
                 
             END DO
+            !$OMP END DO
             
+            !$OMP DO PRIVATE(i, j)
             !Schéma centré d'ordre 2 pour les bords
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
@@ -1358,7 +1430,9 @@ CONTAINS
                     END IF
                 END DO
             END DO
+            !$OMP END DO
             
+            !$OMP DO PRIVATE(i, j)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1367,16 +1441,12 @@ CONTAINS
                     END IF
                 END DO
             END DO
+            !$OMP END DO
             
         !Calcul avec scheme centré d'ordre 2
         ELSE IF (scheme == 'CD2') THEN
-            
-            DO j = 2, n_y-1
-                DO i = 2, n_x-1
-                    CALL cd_scheme_2(i, j)
-                END DO
-            END DO
-            
+            !$OMP BARRIER
+            !$OMP DO PRIVATE(i, j)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1385,10 +1455,24 @@ CONTAINS
                     END IF
                 END DO
             END DO
+            !$OMP END DO
+            
+            !$OMP DO PRIVATE(i, j)
+            DO j = 2, n_y-1
+                DO i = 2, n_x-1
+                    IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
+                        u_temp(i, j) = 0_RKIND
+                        v_temp(i, j) = 0_RKIND
+                    END IF
+                END DO
+            END DO
+            !$OMP END DO
             
         ELSE
             
+            !$OMP SINGLE
             PRINT*, 'Mauvaise définition du schema (fichier input.dat)'
+            !$OMP END SINGLE
             
         END IF
         
@@ -1402,13 +1486,15 @@ CONTAINS
 
         !remplissage de b à chaque itération temporelle, là où A est constant
         CALL fill_b()
-
+        
+        !$OMP BARRIER
+        
         !resolution de l'equation de poisson avec une méthode itérative
-        !CALL jacobi_method()
+        CALL jacobi_method()
         !CALL gauss_siedel_method()
         !CALL successive_over_relaxation_method()
         !CALL steepest_gradient_method()
-        CALL conjugate_gradient_method()
+        !CALL conjugate_gradient_method()
         
     END SUBROUTINE compute_pressure
     
@@ -1421,6 +1507,9 @@ CONTAINS
         
         INTEGER(KIND = IKind) :: i, j
         
+        !$OMP BARRIER
+        
+        !$OMP SINGLE
         !Conditions limites
         u(1, :) = setup%u(1)
         u(n_x, :) = setup%u(2)
@@ -1431,7 +1520,9 @@ CONTAINS
         v(n_x, :) = setup%v(2)
         v(:, 1) = setup%v(3)
         v(:, n_y) = setup%v(4)
+        !$OMP END SINGLE
         
+        !$OMP DO PRIVATE(i, j)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1441,12 +1532,16 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
         
+        !$OMP DO PRIVATE(j)
         DO j = 2, n_y-1
             u(2:n_x-1, j) = u_temp(2:n_x-1, j) - ((p(3:n_x, j) - p(1:n_x-2, j))/(2.0_RKind*dx))*dt/density
             v(2:n_x-1, j) = v_temp(2:n_x-1, j) - ((p(2:n_x-1, j+1) - p(2:n_x-1, j-1))/(2.0_RKind*dy))*dt/density
         END DO
+        !$OMP END DO
         
+        !$OMP DO PRIVATE(i, j)
         DO j = 2, n_y-1
             DO i = 2, n_x-1
                 IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1455,6 +1550,7 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
         
     END SUBROUTINE adjust_speed
     
@@ -1476,41 +1572,64 @@ CONTAINS
         ALLOCATE(u_temp(n_x, n_y))
         ALLOCATE(v_temp(n_x, n_y))
         
+        CALL OMP_SET_NUM_THREADS(2)
+        !$OMP PARALLEL
+        
         !Boucle temporelle du calcul
         DO WHILE ((last_iteration .EQV. .FALSE.) .AND. (i < NMax))
             
+            !$OMP BARRIER
             CALL compute_time_step()
+            !$OMP BARRIER
             
             IF (t + dt > t_f) THEN
                 last_iteration = .TRUE.
                 EXIT
             END IF
             
+            !$OMP BARRIER
+            !$OMP SINGLE
             PRINT*, 'dt = ', dt
+            !$OMP END SINGLE
             
             !appelle le calcul pour cette itération
             CALL speed_guess()
+            !$OMP BARRIER
             
             CALL compute_pressure()
+            !$OMP BARRIER
             
+            
+            
+            CALL adjust_speed()
+            !$OMP BARRIER
+            
+            !$OMP SINGLE
+            !Pour les benchmark
             IF (i == 0) THEN
                 mean_iteration = mean_iteration + mean_iteration_loc
             END IF
             
-            CALL adjust_speed()
+            PRINT*, "t increment ", omp_get_thread_num()
             
             i = i + 1
             t = t + dt
+            !$OMP END SINGLE
             
             !écrit dans un fichier toute les frames
             IF (MOD(i, frame) == 0) THEN
                 CALL write_output_file(i)
             END IF
+            !$OMP BARRIER
             
+            !$OMP SINGLE
             PRINT*, 't = ', t
             PRINT*, '-------------------'
+            !$OMP END SINGLE
             
         END DO
+        
+        !$OMP END PARALLEL
         
         DEALLOCATE(u_temp)
         DEALLOCATE(v_temp)
