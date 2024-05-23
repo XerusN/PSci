@@ -720,6 +720,10 @@ CONTAINS
         norm = SQRT(norm)
         !$OMP END SINGLE
         
+        PRINT*, "norm2 ", omp_get_thread_num()
+        
+        !$OMP BARRIER
+        
     END SUBROUTINE norm_2
     
     
@@ -801,16 +805,23 @@ CONTAINS
         residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
         residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
         
+        
+        
         iteration = 0
         lower_norm = 1
         upper_norm = 1
         !$OMP END SINGLE
         
+        
         CALL pressure_integral_correction(integral)
         
         !$OMP BARRIER
         
+        PRINT*, "pre-while ", omp_get_thread_num(), upper_norm/lower_norm
+        
         DO WHILE (upper_norm/lower_norm > RTol)
+            
+            PRINT*, "post-while ", omp_get_thread_num()
             
             !$OMP BARRIER
             
@@ -818,7 +829,7 @@ CONTAINS
             !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)
             !$OMP END SINGLE
-            
+            PRINT*, "pre-do ", omp_get_thread_num()
             !$OMP DO PRIVATE(i)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
@@ -826,11 +837,15 @@ CONTAINS
                 END IF
             END DO
             !$OMP END DO
+            PRINT*, "post-do ", omp_get_thread_num()
             
             CALL pressure_integral_correction(integral)
             
             !$OMP BARRIER
             
+            PRINT*, "pre-norm2 ", omp_get_thread_num()
+            
+            !$OMP BARRIER
             CALL norm_2(p_vec, lower_norm)
             
             !$OMP BARRIER
@@ -841,6 +856,7 @@ CONTAINS
             
             CALL norm_2(p_vec_temp, upper_norm)
             
+            PRINT*, upper_norm/lower_norm, omp_get_thread_num()
             !$OMP BARRIER
             
             !$OMP SINGLE
@@ -861,6 +877,8 @@ CONTAINS
             END IF
             !$OMP END SINGLE
             
+            !$OMP BARRIER
+            
         END DO
         
         !$OMP BARRIER
@@ -879,6 +897,7 @@ CONTAINS
         
         PRINT*, "jacobi ", omp_get_thread_num()
         
+        STOP
         
         !Pour le benchmark
         mean_iteration_loc = iteration
@@ -1491,6 +1510,7 @@ CONTAINS
         
         !resolution de l'equation de poisson avec une méthode itérative
         CALL jacobi_method()
+        
         !CALL gauss_siedel_method()
         !CALL successive_over_relaxation_method()
         !CALL steepest_gradient_method()
@@ -1573,7 +1593,7 @@ CONTAINS
         ALLOCATE(v_temp(n_x, n_y))
         
         CALL OMP_SET_NUM_THREADS(2)
-        !$OMP PARALLEL
+        !$OMP PARALLEL DEFAULT(SHARED)
         
         !Boucle temporelle du calcul
         DO WHILE ((last_iteration .EQV. .FALSE.) .AND. (i < NMax))
@@ -1599,6 +1619,7 @@ CONTAINS
             CALL compute_pressure()
             !$OMP BARRIER
             
+            !STOP
             
             
             CALL adjust_speed()
