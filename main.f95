@@ -812,7 +812,7 @@ CONTAINS
         !Calcul du résidu
         !$OMP DO PRIVATE(i) SCHEDULE(DYNAMIC)
         DO i = 1, k_max
-            residual(i) = a_opti(i, 3) - b(i)
+            residual(i) = a_opti(i, 3)
             
             IF (i > n_x) THEN
                 residual(i) = residual(i) + a_opti(i, 2)*p_vec(i - 1) + a_opti(i, 1)*p_vec(i - n_x)
@@ -825,6 +825,8 @@ CONTAINS
             ELSE IF (i <= k_max - 1) THEN
                 residual(i) = residual(i) + a_opti(i, 4)*p_vec(i + 1)
             END IF
+            
+            residual(i) = residual(i) - b(i)
         END DO
         !$OMP END DO
         
@@ -866,7 +868,7 @@ CONTAINS
             !Calcul du résidu
             !$OMP DO PRIVATE(i) SCHEDULE(DYNAMIC)
             DO i = 1, k_max
-                residual(i) = a_opti(i, 3) - b(i)
+                residual(i) = a_opti(i, 3)
                 
                 IF (i > n_x) THEN
                     residual(i) = residual(i) + a_opti(i, 2)*p_vec(i - 1) + a_opti(i, 1)*p_vec(i - n_x)
@@ -879,6 +881,8 @@ CONTAINS
                 ELSE IF (i < k_max - 1) THEN
                     residual(i) = residual(i) + a_opti(i, 4)*p_vec(i + 1)
                 END IF
+                
+                residual(i) = residual(i) - b(i)
             END DO
             !$OMP END DO
             
@@ -1428,9 +1432,9 @@ CONTAINS
                     + u(i+1, j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(i, j)/(6_RKind*dx)) &
                     + u(i, j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(i, j)/(6_RKind*dy)) &
                     - u(i-2, j)*dt*u(i, j)/(12_RKind*dx) &
-                    - u(i, j-2)*dt*v(i, j)/(12_RKind*dx) &
+                    - u(i, j-2)*dt*v(i, j)/(12_RKind*dy) &
                     + u(i+2, j)*dt*u(i, j)/(12_RKind*dx) &
-                    + u(i, j+2)*dt*v(i, j)/(12_RKind*dx)
+                    + u(i, j+2)*dt*v(i, j)/(12_RKind*dy)
                     
                     !Calcul de v
                     v_temp(i, j) = v(i, j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
@@ -1439,9 +1443,9 @@ CONTAINS
                     + v(i+1, j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(i, j)/(6_RKind*dx)) &
                     + v(i, j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(i, j)/(6_RKind*dy)) &
                     - v(i-2, j)*dt*u(i, j)/(12_RKind*dx) &
-                    - v(i, j-2)*dt*v(i, j)/(12_RKind*dx) &
+                    - v(i, j-2)*dt*v(i, j)/(12_RKind*dy) &
                     + v(i+2, j)*dt*u(i, j)/(12_RKind*dx) &
-                    + v(i, j+2)*dt*v(i, j)/(12_RKind*dx)
+                    + v(i, j+2)*dt*v(i, j)/(12_RKind*dy)
                     
                 END DO
             END DO
