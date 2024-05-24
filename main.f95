@@ -913,7 +913,7 @@ CONTAINS
         
         PRINT*, "jacobi ", omp_get_thread_num()
         
-        STOP
+        !STOP
         
         !Pour le benchmark
         mean_iteration_loc = iteration
@@ -1677,6 +1677,8 @@ CONTAINS
             t = t + dt
             !$OMP END SINGLE
             
+            PRINT*, "t = ", t, omp_get_thread_num()
+            
             !écrit dans un fichier toute les frames
             IF (MOD(i, frame) == 0) THEN
                 CALL write_output_file(i)
@@ -1688,7 +1690,7 @@ CONTAINS
             PRINT*, '-------------------'
             !$OMP END SINGLE
             
-            !STOP
+            STOP
             
         END DO
         
