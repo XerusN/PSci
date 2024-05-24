@@ -766,8 +766,8 @@ CONTAINS
         REAL(KIND = RKind), PARAMETER :: RTol = 0.001
         !Arret forcé de jacobi
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
-        REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        REAL(KIND = RKind) :: upper_norm = 1, lower_norm = 1, integral = 0
+        INTEGER(KIND = RKind) :: i, j, k_max = 0, iteration = 0
         
         !$OMP BARRIER
         
@@ -797,8 +797,6 @@ CONTAINS
         
         iteration = 0
         !$OMP END SINGLE
-        
-        PRINT*, k_max, omp_get_thread_num()
         
         CALL pressure_integral_correction(integral)
         
@@ -1453,9 +1451,7 @@ CONTAINS
         !resolution de l'equation de poisson avec une méthode itérative
         CALL omp_set_num_threads(4)
         !$OMP PARALLEL
-        PRINT*, omp_get_thread_num()
         CALL jacobi_method()
-        PRINT*, "post", omp_get_thread_num()
         !$OMP END PARALLEL
         !CALL gauss_siedel_method()
         !CALL successive_over_relaxation_method()
