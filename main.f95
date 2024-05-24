@@ -99,9 +99,7 @@ IMPLICIT NONE
     TYPE(SETUP_TYPE) :: setup
     
     !Variables pour le benchmark
-    REAL(KIND = RKind) :: mean_iteration, IF (mean_iteration_loc <= 0_RKind) THEN
-            mean_iteration_loc = iteration
-        END IF
+    REAL(KIND = RKind) :: mean_iteration, mean_iteration_loc
     
 CONTAINS
     
@@ -629,7 +627,7 @@ CONTAINS
     IMPLICIT NONE
 
         INTEGER(KIND = IKIND) :: i, j
-        REAL(KIND = RKind) :: dt_min, dt_temp
+        REAL(KIND = RKind) :: dt_min = 0, dt_temp = 0
         
         !$OMP BARRIER
         !$OMP SINGLE
@@ -670,7 +668,7 @@ CONTAINS
     
     IMPLICIT NONE
         
-        INTEGER(KIND = IKind) :: k_max, i, j, k
+        INTEGER(KIND = IKind) :: k_max = 0, i, j, k
         
         !$OMP BARRIER
         !$OMP SINGLE
@@ -714,7 +712,7 @@ CONTAINS
         
         REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE, INTENT(IN) :: vec
         
-        INTEGER(KIND = IKIND) :: vec_size, i
+        INTEGER(KIND = IKIND) :: vec_size = 0, i
         REAL(KIND = RKind) :: norm
         
         !$OMP BARRIER
@@ -742,8 +740,8 @@ CONTAINS
         INTEGER(KIND = IKIND) :: i, j
         
         !$OMP BARRIER
-        !$OMP SINGLE
         integral = 0_RKind
+        !$OMP DO REDUCTION(+:integral)
         DO i = 1, n_x
             DO j = 1, n_y
                 IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
@@ -755,9 +753,15 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
+        
+        !$OMP SINGLE
         integral = integral/(l_x*l_y)
-        p_vec(:) = p_vec(:) - integral
         !$OMP END SINGLE
+        
+        !$OMP WORKSHARE
+        p_vec(:) = p_vec(:) - integral
+        !$OMP END WORKSHARE
         
     END SUBROUTINE pressure_integral_correction
     
@@ -784,8 +788,8 @@ CONTAINS
         REAL(KIND = RKind), PARAMETER :: RTol = 0.001
         !Arret forcé de jacobi
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
-        REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
+        REAL(KIND = RKind) :: upper_norm = 1, lower_norm = 1, integral = 0
+        INTEGER(KIND = RKind) :: i, j, k_max = 0, iteration = 0
         
         !$OMP BARRIER
         
@@ -801,9 +805,10 @@ CONTAINS
         !$OMP END DO
         
         !$OMP BARRIER
-        k_max = n_x*n_y
         
         !$OMP SINGLE
+        
+        k_max = n_x*n_y
         
         !Calcul du résidu sous forme vectorisée
         residual(:) = - b(:)
@@ -818,8 +823,6 @@ CONTAINS
         
         
         iteration = 0
-        lower_norm = 1
-        upper_norm = 1
         
         !$OMP BARRIER
         PRINT*, "pre-while1 ", omp_get_thread_num(), upper_norm/lower_norm
@@ -1317,7 +1320,7 @@ CONTAINS
         
         INTEGER(KIND = IKind), INTENT(IN) :: i, j
         
-        ! $OMP SINGLE
+        !$OMP SINGLE
         u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
         + u(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
         + u(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
@@ -1330,7 +1333,7 @@ CONTAINS
         + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
         + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
         + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
-        ! $OMP END SINGLE
+        !$OMP END SINGLE
         
     END SUBROUTINE cd_scheme_2
     
@@ -1417,7 +1420,7 @@ CONTAINS
         
         !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
-            ! $OMP BARRIER
+            !$OMP BARRIER
             ! $OMP DO PRIVATE(i)
             DO i = 2, n_x-1
                 CALL cd_scheme_2(i, 2)
@@ -1431,6 +1434,7 @@ CONTAINS
             END DO
             ! $OMP END DO
             
+            !$OMP BARRIER
             
             !$OMP DO PRIVATE(j)
             DO j = 3, n_y-2
@@ -1554,6 +1558,8 @@ CONTAINS
         !CALL steepest_gradient_method()
         !CALL conjugate_gradient_method()
         
+        !$OMP BARRIER
+        
     END SUBROUTINE compute_pressure
     
     
@@ -1670,11 +1676,7 @@ CONTAINS
             
             !$OMP SINGLE
             !Pour les benchmark
-            IF (i == 0) THEN
-                mean_iteration = mean_iteration + IF (mean_iteration_loc <= 0_RKind) THEN
-            mean_iteration_loc = iteration
-        END IF
-            END IF
+            !mean_iteration_loc = iteration
             
             PRINT*, "t increment ", omp_get_thread_num()
             
@@ -1682,7 +1684,7 @@ CONTAINS
             t = t + dt
             !$OMP END SINGLE
             
-            PRINT*, "t = ", t, omp_get_thread_num()
+            !PRINT*, "t = ", t, omp_get_thread_num()
             
             !écrit dans un fichier toute les frames
             IF (MOD(i, frame) == 0) THEN
@@ -1695,7 +1697,7 @@ CONTAINS
             PRINT*, '-------------------'
             !$OMP END SINGLE
             
-            STOP
+            !STOP
             
         END DO
         
