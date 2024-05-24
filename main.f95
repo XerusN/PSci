@@ -1,5 +1,5 @@
 MODULE global
-
+!$ use OMP_LIB
 IMPLICIT NONE
 
     !definition des tailles des reels(RKind) et des entiers(IKind)
@@ -702,9 +702,13 @@ CONTAINS
         
         vec_size = SIZE(vec, 1)
         
+        !$OMP WORKSHARE
         norm = SUM(vec(:)**2_RKind)
+        !$OMP END WORKSHARE
         
+        !$OMP SINGLE
         norm = SQRT(norm)
+        !$OMP END SINGLE
         
     END SUBROUTINE norm_2
     
@@ -717,7 +721,9 @@ CONTAINS
         REAL(KIND = RKind) :: integral
         INTEGER(KIND = IKIND) :: i, j
         
+        !$OMP BARRIER
         integral = 0_RKIND
+        !$OMP DO PRIVATE(i, j) REDUCTION(+:integral)
         DO i = 1, n_x
             DO j = 1, n_y
                 IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
@@ -729,8 +735,11 @@ CONTAINS
                 END IF
             END DO
         END DO
+        !$OMP END DO
+        !$OMP SINGLE
         integral = integral/(l_x*l_y)
         p_vec(:) = p_vec(:) - integral
+        !$OMP END SINGLE
         
     END SUBROUTINE pressure_integral_correction
     
@@ -760,13 +769,18 @@ CONTAINS
         REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
         INTEGER(KIND = RKind) :: i, j, k_max, iteration
         
+        !$OMP BARRIER
+        
+        !$OMP DO PRIVATE(i, j)
         !Tentative initiale
         DO j = 1, n_y
             DO i = 1, n_x
                 p_vec((j-1)*n_x + i) = p(i, j)
             END DO
         END DO
+        !$OMP END DO
         
+        !$OMP SINGLE
         k_max = n_x*n_y
         
         !Calcul du résidu sous forme vectorisée
@@ -778,28 +792,50 @@ CONTAINS
         residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
         residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
         
+        lower_norm = 1
+        upper_norm = 1
+        
         iteration = 0
+        !$OMP END SINGLE
+        
+        PRINT*, k_max, omp_get_thread_num()
         
         CALL pressure_integral_correction(integral)
         
-        lower_norm = 1
-        upper_norm = 1
+        !$OMP BARRIER
+        
         DO WHILE (upper_norm/lower_norm > RTol)
             
+            !$OMP SINGLE
             !Amélioration de la solution
             p_vec_temp(:) = p_vec(:)
+            !$OMP END SINGLE
+            
+            !$OMP DO PRIVATE(i, j)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
                     p_vec(i) = p_vec_temp(i) - residual(i)/a_opti(i, 3)
                 END IF
             END DO
+            !$OMP END DO
             
             CALL pressure_integral_correction(integral)
             
+            !$OMP BARRIER
+            
             CALL norm_2(p_vec, lower_norm)
+            
+            !$OMP BARRIER
+            
+            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
+            !$OMP END SINGLE
+            
             CALL norm_2(p_vec_temp, upper_norm)
             
+            !$OMP BARRIER
+            
+            !$OMP SINGLE
             !Calcul du résidu
             residual(:) = - b(:)
             
@@ -814,20 +850,31 @@ CONTAINS
                 PRINT*, 'Nombre d iteration max de Jacobi atteint (', IterationMax, ' )'
                 STOP
             END IF
+            !$OMP END SINGLE
             
         END DO
         
+        PRINT*, "post-while ", omp_get_thread_num()
+        
+        !$OMP BARRIER
+        
+        !$OMP DO PRIVATE(i, j)
         !Récupération de la pression dans le tableau 2D
         DO j = 1, n_y
             DO i = 1, n_x
                 p(i, j) = p_vec((j-1)*n_x+i)
             END DO
         END DO
+        !$OMP END DO
         
+        !$OMP SINGLE
         PRINT*, 'Jacobi :', iteration, ' iterations | integrale(p) = ', integral
         
         !Pour le benchmark
         mean_iteration_loc = iteration
+        !$OMP END SINGLE
+        
+        
         
     END SUBROUTINE jacobi_method
     
@@ -1404,11 +1451,16 @@ CONTAINS
         CALL fill_b()
 
         !resolution de l'equation de poisson avec une méthode itérative
-        !CALL jacobi_method()
+        CALL omp_set_num_threads(4)
+        !$OMP PARALLEL
+        PRINT*, omp_get_thread_num()
+        CALL jacobi_method()
+        PRINT*, "post", omp_get_thread_num()
+        !$OMP END PARALLEL
         !CALL gauss_siedel_method()
         !CALL successive_over_relaxation_method()
         !CALL steepest_gradient_method()
-        CALL conjugate_gradient_method()
+        !CALL conjugate_gradient_method()
         
     END SUBROUTINE compute_pressure
     
