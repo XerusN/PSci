@@ -720,9 +720,11 @@ CONTAINS
         vec_size = SIZE(vec, 1)
         !$OMP END SINGLE
         
-        !$OMP WORKSHARE
+        ! $OMP WORKSHARE
+        !$OMP SINGLE
         norm = SUM(vec(:)**2_RKind)
-        !$OMP END WORKSHARE
+        !$OMP END SINGLE
+        ! $OMP END WORKSHARE
         
         !$OMP SINGLE
         norm = SQRT(norm)
@@ -1310,7 +1312,8 @@ CONTAINS
         
         !$OMP BARRIER
         
-        !$OMP WORKSHARE
+        ! $OMP WORKSHARE
+        !$OMP SINGLE
         !Conditions limites
         u_temp(1, :) = setup%u(1)
         u_temp(n_x, :) = setup%u(2)
@@ -1321,7 +1324,8 @@ CONTAINS
         v_temp(n_x, :) = setup%v(2)
         v_temp(:, 1) = setup%v(3)
         v_temp(:, n_y) = setup%v(4)
-        !$OMP END WORKSHARE
+        !$OMP END SINGLE
+        ! $OMP END WORKSHARE
         
         !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
         DO j = 1, n_y
@@ -1514,7 +1518,8 @@ CONTAINS
         
         !$OMP BARRIER
         
-        !$OMP WORKSHARE
+        ! $OMP WORKSHARE
+        !$OMP SINGLE
         !Conditions limites
         u(1, :) = setup%u(1)
         u(n_x, :) = setup%u(2)
@@ -1525,7 +1530,8 @@ CONTAINS
         v(n_x, :) = setup%v(2)
         v(:, 1) = setup%v(3)
         v(:, n_y) = setup%v(4)
-        !$OMP END WORKSHARE
+        !$OMP END SINGLE
+        ! $OMP END WORKSHARE
         
         !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
         DO j = 1, n_y
@@ -1577,7 +1583,7 @@ CONTAINS
         ALLOCATE(u_temp(n_x, n_y))
         ALLOCATE(v_temp(n_x, n_y))
         
-        CALL omp_set_num_threads(16)
+        CALL omp_set_num_threads(1)
         !$OMP PARALLEL DEFAULT(SHARED)
         
         !Boucle temporelle du calcul
