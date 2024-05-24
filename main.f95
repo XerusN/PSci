@@ -1333,9 +1333,9 @@ CONTAINS
                 + u(4:n_x-1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
                 + u(3:n_x-2,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
                 - u(1:n_x-4,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                - u(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dx) &
+                - u(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dy) &
                 + u(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                + u(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
+                + u(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dy)
                 
                 !Calcul de v
                 v_temp(3:n_x-2,j) = v(3:n_x-2,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
@@ -1344,9 +1344,9 @@ CONTAINS
                 + v(4:n_x-1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
                 + v(3:n_x-2,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
                 - v(1:n_x-4,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                - v(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dx) &
+                - v(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dy) &
                 + v(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
+                + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dy)
                 
             END DO
             
