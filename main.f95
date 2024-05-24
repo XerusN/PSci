@@ -675,6 +675,8 @@ CONTAINS
         k_max = n_x*n_y
         !$OMP END SINGLE
         
+        PRINT*, "start-fill b ", omp_get_thread_num()
+        
         !$OMP DO PRIVATE(i, j, k)
         DO j = 1, n_y
             DO i = 1, n_x
@@ -696,6 +698,8 @@ CONTAINS
             END DO
         END DO
         !$OMP END DO
+        
+        !$OMP BARRIER
         
     END SUBROUTINE fill_b
     
@@ -783,6 +787,8 @@ CONTAINS
         
         !$OMP BARRIER
         
+        PRINT*, "start-jacobi ", omp_get_thread_num()
+        
         !Tentative initiale
         !$OMP DO PRIVATE(i, j)
         DO j = 1, n_y
@@ -793,8 +799,9 @@ CONTAINS
         !$OMP END DO
         
         !$OMP BARRIER
-        !$OMP SINGLE
         k_max = n_x*n_y
+        
+        !$OMP SINGLE
         
         !Calcul du résidu sous forme vectorisée
         residual(:) = - b(:)
@@ -804,20 +811,23 @@ CONTAINS
         residual(1:k_max-1) = residual(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
         residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
         residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
+        !$OMP END SINGLE
         
         
         
         iteration = 0
         lower_norm = 1
         upper_norm = 1
-        !$OMP END SINGLE
         
+        !$OMP BARRIER
+        PRINT*, "pre-while1 ", omp_get_thread_num(), upper_norm/lower_norm
         
         CALL pressure_integral_correction(integral)
         
+        PRINT*, "pre-while2 ", omp_get_thread_num(), upper_norm/lower_norm
+        
         !$OMP BARRIER
         
-        PRINT*, "pre-while ", omp_get_thread_num(), upper_norm/lower_norm
         
         DO WHILE (upper_norm/lower_norm > RTol)
             
@@ -829,7 +839,7 @@ CONTAINS
             !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)
             !$OMP END SINGLE
-            PRINT*, "pre-do ", omp_get_thread_num()
+            PRINT*, "pre-do ", omp_get_thread_num(), k_max
             !$OMP DO PRIVATE(i)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
@@ -881,7 +891,10 @@ CONTAINS
             
         END DO
         
+        
         !$OMP BARRIER
+        
+        PRINT*, "post-while ", omp_get_thread_num()
         
         !Récupération de la pression dans le tableau 2D
         !$OMP DO PRIVATE(i, j)
@@ -891,6 +904,9 @@ CONTAINS
             END DO
         END DO
         !$OMP END DO
+        
+        
+        !$OMP BARRIER
         
         !$OMP SINGLE
         PRINT*, 'Jacobi :', iteration, ' iterations | integrale(p) = ', integral
@@ -1298,7 +1314,7 @@ CONTAINS
         
         INTEGER(KIND = IKind), INTENT(IN) :: i, j
         
-        !$OMP SINGLE
+        ! $OMP SINGLE
         u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
         + u(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
         + u(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
@@ -1311,7 +1327,7 @@ CONTAINS
         + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
         + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/(2_RKind*dx)) &
         + v(i,j+1)*dt*(viscosity/dy**2_RKind - v(i,j)/(2_RKind*dy))
-        !$OMP END SINGLE
+        ! $OMP END SINGLE
         
     END SUBROUTINE cd_scheme_2
     
@@ -1353,7 +1369,7 @@ CONTAINS
         END DO
         !$OMP END DO
         
-        
+        PRINT*, "speed-guess ", omp_get_thread_num()
         
         !Calcul avec scheme régressif upwind d'ordre 1
         IF (scheme == 'UR1') THEN
@@ -1412,6 +1428,7 @@ CONTAINS
             END DO
             ! $OMP END DO
             
+            
             !$OMP DO PRIVATE(j)
             DO j = 3, n_y-2
                     
@@ -1440,8 +1457,11 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP DO PRIVATE(i, j)
+            PRINT*, "mid1 speed-guess ", omp_get_thread_num()
+            
+            ! $OMP DO PRIVATE(i, j)
             !Schéma centré d'ordre 2 pour les bords
+            !$OMP SINGLE
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (space_grid%borders(i, j)/16 >= 0) THEN
@@ -1449,7 +1469,11 @@ CONTAINS
                     END IF
                 END DO
             END DO
-            !$OMP END DO
+            !$OMP END SINGLE
+            ! $OMP END DO
+            
+            PRINT*, "mid2 speed-guess ", omp_get_thread_num()
+            
             
             !$OMP DO PRIVATE(i, j)
             DO j = 2, n_y-1
@@ -1495,6 +1519,10 @@ CONTAINS
             
         END IF
         
+        PRINT*, "end speed-guess ", omp_get_thread_num()
+        
+        !$OMP BARRIER
+        
     END SUBROUTINE speed_guess
 
 
@@ -1502,13 +1530,20 @@ CONTAINS
     SUBROUTINE compute_pressure()
     
     IMPLICIT NONE
-
+        
+        !$OMP BARRIER
+        
         !remplissage de b à chaque itération temporelle, là où A est constant
         CALL fill_b()
+        
+        PRINT*, "pre-barrier call jacobi ", omp_get_thread_num()
+        
         
         !$OMP BARRIER
         
         !resolution de l'equation de poisson avec une méthode itérative
+        PRINT*, "pre-call jacobi ", omp_get_thread_num()
+        
         CALL jacobi_method()
         
         !CALL gauss_siedel_method()
@@ -1592,7 +1627,7 @@ CONTAINS
         ALLOCATE(u_temp(n_x, n_y))
         ALLOCATE(v_temp(n_x, n_y))
         
-        CALL OMP_SET_NUM_THREADS(2)
+        CALL OMP_SET_NUM_THREADS(4)
         !$OMP PARALLEL DEFAULT(SHARED)
         
         !Boucle temporelle du calcul
@@ -1602,10 +1637,13 @@ CONTAINS
             CALL compute_time_step()
             !$OMP BARRIER
             
+            
+            
             IF (t + dt > t_f) THEN
                 last_iteration = .TRUE.
                 EXIT
             END IF
+            
             
             !$OMP BARRIER
             !$OMP SINGLE
@@ -1615,6 +1653,8 @@ CONTAINS
             !appelle le calcul pour cette itération
             CALL speed_guess()
             !$OMP BARRIER
+            
+            PRINT*, omp_get_thread_num()
             
             CALL compute_pressure()
             !$OMP BARRIER
@@ -1647,6 +1687,8 @@ CONTAINS
             PRINT*, 't = ', t
             PRINT*, '-------------------'
             !$OMP END SINGLE
+            
+            !STOP
             
         END DO
         
