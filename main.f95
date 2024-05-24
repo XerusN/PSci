@@ -1419,9 +1419,9 @@ CONTAINS
                 + v(4:n_x-1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
                 + v(3:n_x-2,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
                 - v(1:n_x-4,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                - v(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dx) &
+                - v(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dy) &
                 + v(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
+                + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dy)
                 
             END DO
             !$OMP END DO
