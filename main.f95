@@ -99,7 +99,9 @@ IMPLICIT NONE
     TYPE(SETUP_TYPE) :: setup
     
     !Variables pour le benchmark
-    REAL(KIND = RKIND) :: mean_iteration, mean_iteration_loc
+    REAL(KIND = RKind) :: mean_iteration, IF (mean_iteration_loc <= 0_RKind) THEN
+            mean_iteration_loc = iteration
+        END IF
     
 CONTAINS
     
@@ -258,7 +260,7 @@ CONTAINS
         DO i = 1, n_x
             DO j = 1, n_y
                 WRITE(11, '(6(ES20.13, 1X))') space_grid%x(i), space_grid%y(j), u(i, j), v(i, j), &
-                SQRT(u(i, j)**2.0_RKIND + v(i, j)**2.0_RKIND), p(i, j)
+                SQRT(u(i, j)**2.0_RKind + v(i, j)**2.0_RKind), p(i, j)
             END DO
         END DO
         
@@ -305,7 +307,7 @@ CONTAINS
 
         INTEGER(KIND = IKind) :: i, j, k
         INTEGER, DIMENSION(:, :), ALLOCATABLE :: borders_grid
-        REAL(KIND = RKIND) :: x, y, poly1, poly2, squares1, squares2
+        REAL(KIND = RKind) :: x, y, poly1, poly2, squares1, squares2
         
         !Allocation des tableaux liés au maillage spatial
         ALLOCATE(space_grid%x(n_x))
@@ -472,7 +474,7 @@ CONTAINS
     IMPLICIT NONE
         
         INTEGER(KIND = IKind) :: i, j, k, k_max
-        REAL(KIND = RKIND) :: inv_x_2, inv_y_2
+        REAL(KIND = RKind) :: inv_x_2, inv_y_2
 
         !calcul de la dimension du vecteur solution
         k_max = n_x*n_y
@@ -627,7 +629,7 @@ CONTAINS
     IMPLICIT NONE
 
         INTEGER(KIND = IKIND) :: i, j
-        REAL(KIND = RKIND) :: dt_min, dt_temp
+        REAL(KIND = RKind) :: dt_min, dt_temp
         
         !$OMP BARRIER
         !$OMP SINGLE
@@ -710,10 +712,10 @@ CONTAINS
     
     IMPLICIT NONE
         
-        REAL(KIND = Rkind), DIMENSION(:), ALLOCATABLE, INTENT(IN) :: vec
+        REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE, INTENT(IN) :: vec
         
         INTEGER(KIND = IKIND) :: vec_size, i
-        REAL(KIND = RKIND) :: norm
+        REAL(KIND = RKind) :: norm
         
         !$OMP BARRIER
         !$OMP SINGLE
@@ -741,7 +743,7 @@ CONTAINS
         
         !$OMP BARRIER
         !$OMP SINGLE
-        integral = 0_RKIND
+        integral = 0_RKind
         DO i = 1, n_x
             DO j = 1, n_y
                 IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
@@ -918,7 +920,6 @@ CONTAINS
         !Pour le benchmark
         mean_iteration_loc = iteration
         !$OMP END SINGLE
-        
         
     END SUBROUTINE jacobi_method
     
@@ -1183,7 +1184,9 @@ CONTAINS
         PRINT*, 'Descente du gradient :', iteration, ' iterations | integrale(p) = ', integral
         
         !Benchmark
-        mean_iteration_loc = iteration
+        IF (mean_iteration_loc <= 0_RKind) THEN
+            mean_iteration_loc = iteration
+        END IF
         
     END SUBROUTINE steepest_gradient_method
     
@@ -1403,7 +1406,7 @@ CONTAINS
                     
                     !Calcul de v
                     v_temp(i,j) = v(i,j)*(1.0_RKind - 2.0_RKind*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2) &
-                    - u(i,j)*dt/dx*2.0_RKIND*(REAL(upwind_x) - 0.5_RKind) - v(i,j)*dt/dy*2.0_RKind*(REAL(upwind_y) - 0.5_RKind)) &
+                    - u(i,j)*dt/dx*2.0_RKind*(REAL(upwind_x) - 0.5_RKind) - v(i,j)*dt/dy*2.0_RKind*(REAL(upwind_y) - 0.5_RKind)) &
                     + v(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/dx*REAL(upwind_x)) &
                     + v(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/dy*REAL(upwind_y)) &
                     + v(i+1,j)*dt*(viscosity/dx**2_RKind - u(i,j)/dx*REAL(1_RKind - upwind_x)) &
@@ -1479,8 +1482,8 @@ CONTAINS
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
-                        u_temp(i, j) = 0_RKIND
-                        v_temp(i, j) = 0_RKIND
+                        u_temp(i, j) = 0_RKind
+                        v_temp(i, j) = 0_RKind
                     END IF
                 END DO
             END DO
@@ -1493,8 +1496,8 @@ CONTAINS
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
-                        u_temp(i, j) = 0_RKIND
-                        v_temp(i, j) = 0_RKIND
+                        u_temp(i, j) = 0_RKind
+                        v_temp(i, j) = 0_RKind
                     END IF
                 END DO
             END DO
@@ -1504,8 +1507,8 @@ CONTAINS
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
-                        u_temp(i, j) = 0_RKIND
-                        v_temp(i, j) = 0_RKIND
+                        u_temp(i, j) = 0_RKind
+                        v_temp(i, j) = 0_RKind
                     END IF
                 END DO
             END DO
@@ -1600,8 +1603,8 @@ CONTAINS
         DO j = 2, n_y-1
             DO i = 2, n_x-1
                 IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
-                    u(i, j) = 0_RKIND
-                    v(i, j) = 0_RKIND
+                    u(i, j) = 0_RKind
+                    v(i, j) = 0_RKind
                 END IF
             END DO
         END DO
@@ -1668,7 +1671,9 @@ CONTAINS
             !$OMP SINGLE
             !Pour les benchmark
             IF (i == 0) THEN
-                mean_iteration = mean_iteration + mean_iteration_loc
+                mean_iteration = mean_iteration + IF (mean_iteration_loc <= 0_RKind) THEN
+            mean_iteration_loc = iteration
+        END IF
             END IF
             
             PRINT*, "t increment ", omp_get_thread_num()
@@ -1710,7 +1715,7 @@ USE global
 
 IMPLICIT NONE
     
-    REAL(KIND = RKIND) :: time1, time2, mean_time
+    REAL(KIND = RKind) :: time1, time2, mean_time
     INTEGER, DIMENSION(5) :: mesh_size
     INTEGER :: i, j, nb_tests
     CHARACTER(LEN = StrLen) :: name
@@ -1732,7 +1737,7 @@ IMPLICIT NONE
     ! DO i = 1, SIZE(mesh_size)
         
     !     mean_time = 0.0_RKind
-    !     mean_iteration = 0.0_RKIND
+    !     mean_iteration = 0.0_RKind
         
     !     DO j = 1, nb_tests
         
