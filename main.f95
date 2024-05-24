@@ -803,20 +803,30 @@ CONTAINS
         !$OMP SINGLE
         k_max = n_x*n_y
         
-        !Calcul du résidu sous forme vectorisée
-        residual(:) = - b(:)
-        
-        residual(1:k_max) = residual(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
-        residual(2:k_max) = residual(2:k_max) + a_opti(2:k_max, 2)*p_vec(1:k_max-1)
-        residual(1:k_max-1) = residual(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
-        residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
-        residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
-        
         lower_norm = 1
         upper_norm = 1
         
         iteration = 0
         !$OMP END SINGLE
+        
+        !Calcul du résidu
+        !$OMP DO PRIVATE(i) SCHEDULE(DYNAMIC)
+        DO i = 1, k_max
+            residual(i) = a_opti(i, 3) - b(i)
+            
+            IF (i > n_x) THEN
+                residual(i) = residual(i) + a_opti(i, 2)*p_vec(i - 1) + a_opti(i, 1)*p_vec(i - n_x)
+            ELSE IF (i > 1) THEN
+                residual(i) = residual(i) + a_opti(i, 2)*p_vec(i - 1)
+            END IF
+            
+            IF (i <= k_max - n_x) THEN
+                residual(i) = residual(i) + a_opti(i, 4)*p_vec(i + 1) + a_opti(i, 5)*p_vec(i + n_x)
+            ELSE IF (i <= k_max - 1) THEN
+                residual(i) = residual(i) + a_opti(i, 4)*p_vec(i + 1)
+            END IF
+        END DO
+        !$OMP END DO
         
         CALL pressure_integral_correction(integral)
         
@@ -853,16 +863,26 @@ CONTAINS
             
             !$OMP BARRIER
             
-            !$OMP SINGLE
             !Calcul du résidu
-            residual(:) = - b(:)
+            !$OMP DO PRIVATE(i) SCHEDULE(DYNAMIC)
+            DO i = 1, k_max
+                residual(i) = a_opti(i, 3) - b(i)
+                
+                IF (i > n_x) THEN
+                    residual(i) = residual(i) + a_opti(i, 2)*p_vec(i - 1) + a_opti(i, 1)*p_vec(i - n_x)
+                ELSE IF (i > 1) THEN
+                    residual(i) = residual(i) + a_opti(i, 2)*p_vec(i - 1)
+                END IF
+                
+                IF (i < k_max - n_x) THEN
+                    residual(i) = residual(i) + a_opti(i, 4)*p_vec(i + 1) + a_opti(i, 5)*p_vec(i + n_x)
+                ELSE IF (i < k_max - 1) THEN
+                    residual(i) = residual(i) + a_opti(i, 4)*p_vec(i + 1)
+                END IF
+            END DO
+            !$OMP END DO
             
-            residual(1:k_max) = residual(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
-            residual(2:k_max) = residual(2:k_max) + a_opti(2:k_max, 2)*p_vec(1:k_max-1)
-            residual(1:k_max-1) = residual(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
-            residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
-            residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
-            
+            !$OMP SINGLE
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
                 PRINT*, 'Nombre d iteration max de Jacobi atteint (', IterationMax, ' )'
@@ -1398,31 +1418,32 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j)
+            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j, i)
             DO j = 3, n_y-2
+                DO i = 3, n_x-2
                     
-                !Calcul de u
-                u_temp(3:n_x-2,j) = u(3:n_x-2,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
-                + u(2:n_x-3,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
-                + u(3:n_x-2,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
-                + u(4:n_x-1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
-                + u(3:n_x-2,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
-                - u(1:n_x-4,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                - u(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dx) &
-                + u(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                + u(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
-                
-                !Calcul de v
-                v_temp(3:n_x-2,j) = v(3:n_x-2,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
-                + v(2:n_x-3,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
-                + v(3:n_x-2,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
-                + v(4:n_x-1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
-                + v(3:n_x-2,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
-                - v(1:n_x-4,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                - v(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dx) &
-                + v(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-                + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dx)
-                
+                    u_temp(i, j) = u(i, j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+                    + u(i-1, j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(i, j)/(6_RKind*dx)) &
+                    + u(i, j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(i, j)/(6_RKind*dy)) &
+                    + u(i+1, j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(i, j)/(6_RKind*dx)) &
+                    + u(i, j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(i, j)/(6_RKind*dy)) &
+                    - u(i-2, j)*dt*u(i, j)/(12_RKind*dx) &
+                    - u(i, j-2)*dt*v(i, j)/(12_RKind*dx) &
+                    + u(i+2, j)*dt*u(i, j)/(12_RKind*dx) &
+                    + u(i, j+2)*dt*v(i, j)/(12_RKind*dx)
+                    
+                    !Calcul de v
+                    v_temp(i, j) = v(i, j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
+                    + v(i-1, j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(i, j)/(6_RKind*dx)) &
+                    + v(i, j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(i, j)/(6_RKind*dy)) &
+                    + v(i+1, j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(i, j)/(6_RKind*dx)) &
+                    + v(i, j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(i, j)/(6_RKind*dy)) &
+                    - v(i-2, j)*dt*u(i, j)/(12_RKind*dx) &
+                    - v(i, j-2)*dt*v(i, j)/(12_RKind*dx) &
+                    + v(i+2, j)*dt*u(i, j)/(12_RKind*dx) &
+                    + v(i, j+2)*dt*v(i, j)/(12_RKind*dx)
+                    
+                END DO
             END DO
             !$OMP END DO
             
@@ -1545,10 +1566,12 @@ CONTAINS
         END DO
         !$OMP END DO
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j)
+        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j, i)
         DO j = 2, n_y-1
-            u(2:n_x-1, j) = u_temp(2:n_x-1, j) - ((p(3:n_x, j) - p(1:n_x-2, j))/(2.0_RKind*dx))*dt/density
-            v(2:n_x-1, j) = v_temp(2:n_x-1, j) - ((p(2:n_x-1, j+1) - p(2:n_x-1, j-1))/(2.0_RKind*dy))*dt/density
+            DO i = 2, n_x-1
+                u(i, j) = u_temp(i, j) - ((p(i+1, j) - p(i-1, j))/(2.0_RKind*dx))*dt/density
+                v(i, j) = v_temp(i, j) - ((p(i, j+1) - p(i, j-1))/(2.0_RKind*dy))*dt/density
+            END DO
         END DO
         !$OMP END DO
         
