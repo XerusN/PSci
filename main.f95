@@ -758,8 +758,13 @@ CONTAINS
         !$OMP END DO
         !$OMP SINGLE
         integral = integral/(l_x*l_y)
-        p_vec(:) = p_vec(:) - integral
         !$OMP END SINGLE
+        
+        !$OMP DO PRIVATE(i)
+        DO i = 0, n_x*n_y
+            p_vec(:) = p_vec(:) - integral
+        END DO
+        !OMP END DO
         
     END SUBROUTINE pressure_integral_correction
     
@@ -809,8 +814,14 @@ CONTAINS
         iteration = 0
         !$OMP END SINGLE
         
+        
+        
+        CALL pressure_integral_correction(integral)
+        
+        !$OMP BARRIER
+        
         !Calcul du résidu
-        !$OMP DO PRIVATE(i) SCHEDULE(DYNAMIC)
+        !$OMP DO PRIVATE(i)
         DO i = 1, k_max
             residual(i) = a_opti(i, 3)
             
@@ -829,10 +840,6 @@ CONTAINS
             residual(i) = residual(i) - b(i)
         END DO
         !$OMP END DO
-        
-        CALL pressure_integral_correction(integral)
-        
-        !$OMP BARRIER
         
         DO WHILE (upper_norm/lower_norm > RTol)
             
@@ -876,9 +883,9 @@ CONTAINS
                     residual(i) = residual(i) + a_opti(i, 2)*p_vec(i - 1)
                 END IF
                 
-                IF (i < k_max - n_x) THEN
+                IF (i <= k_max - n_x) THEN
                     residual(i) = residual(i) + a_opti(i, 4)*p_vec(i + 1) + a_opti(i, 5)*p_vec(i + n_x)
-                ELSE IF (i < k_max - 1) THEN
+                ELSE IF (i <= k_max - 1) THEN
                     residual(i) = residual(i) + a_opti(i, 4)*p_vec(i + 1)
                 END IF
                 
