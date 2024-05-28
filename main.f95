@@ -1404,11 +1404,11 @@ CONTAINS
         CALL fill_b()
 
         !resolution de l'equation de poisson avec une méthode itérative
-        !CALL jacobi_method()
+        CALL jacobi_method()
         !CALL gauss_siedel_method()
         !CALL successive_over_relaxation_method()
         !CALL steepest_gradient_method()
-        CALL conjugate_gradient_method()
+        !CALL conjugate_gradient_method()
         
     END SUBROUTINE compute_pressure
     
