@@ -680,7 +680,7 @@ CONTAINS
         k_max = n_x*n_y
         !$OMP END SINGLE
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j, k)
+        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j, k) COLLAPSE(2)
         DO j = 1, n_y
             DO i = 1, n_x
             
@@ -743,7 +743,7 @@ CONTAINS
         
         !$OMP BARRIER
         integral = 0_RKIND
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) REDUCTION(+:integral)
+        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) REDUCTION(+:integral) COLLAPSE(2)
         DO i = 1, n_x
             DO j = 1, n_y
                 IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
@@ -791,7 +791,7 @@ CONTAINS
         
         !$OMP BARRIER
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
         !Tentative initiale
         DO j = 1, n_y
             DO i = 1, n_x
@@ -906,7 +906,7 @@ CONTAINS
         
         !$OMP BARRIER
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
         !Récupération de la pression dans le tableau 2D
         DO j = 1, n_y
             DO i = 1, n_x
@@ -1359,7 +1359,7 @@ CONTAINS
         !$OMP END SINGLE
         ! $OMP END WORKSHARE
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1376,7 +1376,7 @@ CONTAINS
         !Calcul avec scheme régressif upwind d'ordre 1
         IF (scheme == 'UR1') THEN
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j, upwind_x, upwind_y)
+            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j, upwind_x, upwind_y) COLLAPSE(2)
             !calcul du n+1
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
@@ -1458,7 +1458,7 @@ CONTAINS
             ! END DO
             ! !$OMP END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
             DO j = 3, n_y-2
                 DO i = 3, n_x-2
                     
@@ -1487,7 +1487,7 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
             !Schéma centré d'ordre 2 pour les bords
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
@@ -1498,7 +1498,7 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1594,7 +1594,7 @@ CONTAINS
         !$OMP END SINGLE
         ! $OMP END WORKSHARE
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1613,7 +1613,7 @@ CONTAINS
         END DO
         !$OMP END DO
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
         DO j = 2, n_y-1
             DO i = 2, n_x-1
                 IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1644,7 +1644,7 @@ CONTAINS
         ALLOCATE(u_temp(n_x, n_y))
         ALLOCATE(v_temp(n_x, n_y))
         
-        CALL omp_set_num_threads(16)
+        CALL omp_set_num_threads(8)
         !$OMP PARALLEL DEFAULT(SHARED)
         
         !Boucle temporelle du calcul
