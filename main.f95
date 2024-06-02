@@ -9,11 +9,7 @@ IMPLICIT NONE
     !Constante de taille pour le nom des fichiers
     INTEGER, PARAMETER :: StrLen = 40
     
-    
-    
     !-----------------------------------------------------
-    
-    
     
     !Variables d'entree
     
@@ -103,7 +99,6 @@ IMPLICIT NONE
     
 CONTAINS
     
-
     SUBROUTINE read_input_file(name)
     IMPLICIT NONE
         
@@ -265,34 +260,6 @@ CONTAINS
         CLOSE(11)
         
     END SUBROUTINE write_output_file
-    
-    
-    !Permet de rapidement tester la valeur de certaines variables
-    SUBROUTINE debug(iteration)
-    IMPLICIT NONE
-        
-        INTEGER(KIND = IKind), INTENT(IN) :: iteration
-        
-        CHARACTER(LEN = StrLen) :: name
-        INTEGER(KIND = RKind) :: i, j
-        
-        WRITE(name, '(I0)') iteration
-        name = 'debug/a_opti_' // TRIM(name) // '.dat'
-        
-        !Ouverture du fichier a ecrire
-        OPEN(11, FILE = name)
-        
-        DO i = 1, n_x*n_y
-            WRITE(11, '(A, I3, A, 5(F7.1))') 'i = ', i, ' | a_opti(i) = ', a_opti(i, :)
-        END DO
-        
-        !Fermeture du fichier
-        CLOSE(11)
-        
-    END SUBROUTINE Debug
-    
-        
-    
     
     !maj à l'Etape 7, 2D
     !subroutine de creation du maillage spatial, contient les coordonnées exactes de chaque pt, en 2D
@@ -1602,7 +1569,6 @@ IMPLICIT NONE
     
     ! CLOSE(12)
     
-    
     !Programme classique
     CALL CPU_TIME(time1)
     
@@ -1613,7 +1579,6 @@ IMPLICIT NONE
     CALL initialisation()
     
     CALL resolution_loop()
-    
     
     !Désallocation des variables
     DEALLOCATE(space_grid%x)
