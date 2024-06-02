@@ -1,10 +1,11 @@
 MODULE global
+
 !$ use OMP_LIB
 IMPLICIT NONE
 
     !definition des tailles des reels(RKind) et des entiers(IKind)
     INTEGER, PARAMETER :: RKind = SELECTED_REAL_KIND(15,200)
-    INTEGER, PARAMETER :: IKind = SELECTED_INT_KIND(5)
+    INTEGER, PARAMETER :: IKind = SELECTED_INT_KIND(10)
     
     !Constante de taille pour le nom des fichiers
     INTEGER, PARAMETER :: StrLen = 40
@@ -101,6 +102,9 @@ IMPLICIT NONE
     !Variables pour le benchmark
     REAL(KIND = RKIND) :: mean_iteration, mean_iteration_loc
     
+    !choix du nombre de threads à utiliser
+    INTEGER(KIND = IKIND) :: num_threads
+    
 CONTAINS
     
 
@@ -115,6 +119,12 @@ CONTAINS
         
         !Saut des deux premieres lignes
         READ(10, *)
+        READ(10, *)
+        
+        !Nombre de threads à utiliser
+        READ(10, *)
+        READ(10, *) num_threads
+        
         READ(10, *)
         
         !Taille du maillage spatial
@@ -237,36 +247,37 @@ CONTAINS
     IMPLICIT NONE
         
         INTEGER(KIND = IKind), INTENT(IN) :: iteration
-        
+        INTEGER(KIND = IKind) :: start = 0, end = 0
+        INTEGER :: unit
+
         CHARACTER(LEN = StrLen) :: name
         INTEGER(KIND = RKind) :: i, j
-        
-        !$OMP BARRIER
-        
-        !$OMP SINGLE
+
+        call SYSTEM_CLOCK(count = start)
+
         WRITE(name, '(I0)') iteration
         name = 'output/resTECPLOT_' // TRIM(name) // '.dat'
         
         !Ouverture du fichier a ecrire
-        OPEN(11, FILE = name)
+        OPEN(NEWUNIT=unit, FILE=name, STATUS='REPLACE')
         
-        WRITE(11, *) 'TITLE = "ETAPE2"'
-        WRITE(11, *) 'VARIABLES = "X", "Y", "U", "V", "MAG", "P"'
-        WRITE(11, '(1X, A, ES20.13, A, I4, A, I4, A)') 'ZONE T="', t, &
+        WRITE(unit, *) 'TITLE = "PSci RESULTAT"'
+        WRITE(unit, *) 'VARIABLES = "X", "Y", "U", "V", "MAG", "P"'
+        WRITE(unit, '(1X, A, ES20.13, A, I4, A, I4, A)') 'ZONE T="', t, &
             '   seconds", I=', n_y, ', J=', n_x, ', DATAPACKING=POINT'
         
         !Ecriture pour chaque position
         DO i = 1, n_x
             DO j = 1, n_y
-                WRITE(11, '(6(ES20.13, 1X))') space_grid%x(i), space_grid%y(j), u(i, j), v(i, j), &
+                WRITE(unit, '(6(ES20.13, 1X))') space_grid%x(i), space_grid%y(j), u(i, j), v(i, j), &
                 SQRT(u(i, j)**2.0_RKIND + v(i, j)**2.0_RKIND), p(i, j)
             END DO
         END DO
         
-        
         !Fermeture du fichier
-        CLOSE(11)
-        !$OMP END SINGLE
+        CLOSE(unit)
+        call SYSTEM_CLOCK(count = end)
+        PRINT *, 'Time to write output file : ', end - start
         
     END SUBROUTINE write_output_file
     
@@ -280,9 +291,6 @@ CONTAINS
         CHARACTER(LEN = StrLen) :: name
         INTEGER(KIND = RKind) :: i, j
         
-        !$OMP BARRIER
-        
-        !$OMP SINGLE
         WRITE(name, '(I0)') iteration
         name = 'debug/a_opti_' // TRIM(name) // '.dat'
         
@@ -295,7 +303,6 @@ CONTAINS
         
         !Fermeture du fichier
         CLOSE(11)
-        !$OMP END SINGLE
         
     END SUBROUTINE Debug
     
@@ -636,8 +643,6 @@ CONTAINS
 
         !On cherche le dt le plus contraignant, càd le plus petit
 
-        !$OMP BARRIER
-        
         !$OMP SINGLE
         !initialisation du min en utilisant la condition du fourrier
         dt_min = fo/viscosity*dx**2
@@ -680,7 +685,7 @@ CONTAINS
         k_max = n_x*n_y
         !$OMP END SINGLE
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j, k) COLLAPSE(2)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j, k) COLLAPSE(2)
         DO j = 1, n_y
             DO i = 1, n_x
             
@@ -716,19 +721,10 @@ CONTAINS
         INTEGER(KIND = IKIND) :: vec_size = 0, i
         REAL(KIND = RKIND) :: norm
         
-        !$OMP SINGLE
         vec_size = SIZE(vec, 1)
-        !$OMP END SINGLE
         
-        ! $OMP WORKSHARE
-        !$OMP SINGLE
         norm = SUM(vec(:)**2_RKind)
-        !$OMP END SINGLE
-        ! $OMP END WORKSHARE
-        
-        !$OMP SINGLE
         norm = SQRT(norm)
-        !$OMP END SINGLE
         
     END SUBROUTINE norm_2
     
@@ -741,9 +737,8 @@ CONTAINS
         REAL(KIND = RKind) :: integral
         INTEGER(KIND = IKIND) :: i, j
         
-        !$OMP BARRIER
         integral = 0_RKIND
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) REDUCTION(+:integral) COLLAPSE(2)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) REDUCTION(+:integral) COLLAPSE(2)
         DO i = 1, n_x
             DO j = 1, n_y
                 IF (((i == 1) .OR. (i == n_x)) .NEQV. ((j == 1) .OR. (j == n_y))) THEN
@@ -758,8 +753,13 @@ CONTAINS
         !$OMP END DO
         !$OMP SINGLE
         integral = integral/(l_x*l_y)
-        p_vec(:) = p_vec(:) - integral
         !$OMP END SINGLE
+        
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i)
+        DO i = 1, n_x*n_y
+            p_vec(i) = p_vec(i) - integral
+        END DO
+        !$OMP END DO
         
     END SUBROUTINE pressure_integral_correction
     
@@ -787,11 +787,11 @@ CONTAINS
         !Arret forcé de jacobi
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm = 1, lower_norm = 1, integral = 0
-        INTEGER(KIND = RKind) :: i, j, k_max = 0, iteration = 0
+        INTEGER(KIND = IKind) :: i, j, k_max = 0, iteration = 0, time1 = 0, time2 = 0, time3 = 0, time4 = 0, time5 = 0
         
-        !$OMP BARRIER
+        ! $OMP BARRIER
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
         !Tentative initiale
         DO j = 1, n_y
             DO i = 1, n_x
@@ -818,12 +818,13 @@ CONTAINS
         upper_norm = 1
         
         iteration = 0
+        
         !$OMP END SINGLE
         
         CALL pressure_integral_correction(integral)
         
         !Calcul du résidu
-        !$OMP DO PRIVATE(i) SCHEDULE(DYNAMIC)
+        !$OMP DO PRIVATE(i) SCHEDULE(DYNAMIC, 100)
         DO i = 1, k_max
             residual(i) = a_opti(i, 3)*p_vec(i) - b(i)
 
@@ -839,18 +840,21 @@ CONTAINS
                 residual(i) = residual(i) + a_opti(i, 4)*p_vec(i + 1)
             END IF
         END DO
-        !$OMP END DO
-        
-        !$OMP BARRIER
+        !$OMP END DO           
+
+        ! $OMP BARRIER
+        !CALL SYSTEM_CLOCK(COUNT=time1)
         
         DO WHILE (upper_norm/lower_norm > RTol)
             
             !$OMP SINGLE
             !Amélioration de la solution
+            !CALL SYSTEM_CLOCK(COUNT=time2)
+            
             p_vec_temp(:) = p_vec(:)
             !$OMP END SINGLE
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
                     p_vec(i) = p_vec_temp(i) - residual(i)/a_opti(i, 3)
@@ -858,24 +862,25 @@ CONTAINS
             END DO
             !$OMP END DO
             
+            !$OMP SINGLE
+            !CALL SYSTEM_CLOCK(COUNT=time3)
+            time5 = time5 + time3 - time2
+            !$OMP END SINGLE
             CALL pressure_integral_correction(integral)
             
-            !$OMP BARRIER
-            
-            CALL norm_2(p_vec, lower_norm)
-            
-            !$OMP BARRIER
+            ! $OMP BARRIER
             
             !$OMP SINGLE
+            CALL norm_2(p_vec, lower_norm)
+            
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
-            !$OMP END SINGLE
             
             CALL norm_2(p_vec_temp, upper_norm)
+            !$OMP END SINGLE
             
-            !$OMP BARRIER
             
             !Calcul du résidu
-            !$OMP DO PRIVATE(i)
+            !$OMP DO SCHEDULE(dynamic, 100) PRIVATE(i)
             DO i = 1, k_max
                 residual(i) = a_opti(i, 3)*p_vec(i) - b(i)
 
@@ -900,11 +905,14 @@ CONTAINS
                 PRINT*, 'Nombre d iteration max de Jacobi atteint (', IterationMax, ' )'
                 STOP
             END IF
+            
             !$OMP END SINGLE
             
         END DO
         
-        !$OMP BARRIER
+        !CALL SYSTEM_CLOCK(COUNT=time4)
+        
+        ! $OMP BARRIER
         
         !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
         !Récupération de la pression dans le tableau 2D
@@ -920,6 +928,8 @@ CONTAINS
         
         !Pour le benchmark
         mean_iteration_loc = iteration
+        !PRINT*, REAL(time5)/REAL(iteration) 
+        !PRINT*, time4-time1
         !$OMP END SINGLE
         
     END SUBROUTINE jacobi_method
@@ -1341,8 +1351,8 @@ CONTAINS
         INTEGER(KIND = IKind) :: i, j
         !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
         INTEGER(KIND = IKIND) :: upwind_x, upwind_y
-        
-        !$OMP BARRIER
+
+        ! $OMP BARRIER
         
         ! $OMP WORKSHARE
         !$OMP SINGLE
@@ -1359,7 +1369,7 @@ CONTAINS
         !$OMP END SINGLE
         ! $OMP END WORKSHARE
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1376,7 +1386,7 @@ CONTAINS
         !Calcul avec scheme régressif upwind d'ordre 1
         IF (scheme == 'UR1') THEN
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j, upwind_x, upwind_y) COLLAPSE(2)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j, upwind_x, upwind_y) COLLAPSE(2)
             !calcul du n+1
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
@@ -1417,48 +1427,20 @@ CONTAINS
         !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i)
+            !$OMP DO SCHEDULE(DYNAMIC, 10) PRIVATE(i)
             DO i = 2, n_x-1
-                CALL cd_scheme_2(i, 2)
-                CALL cd_scheme_2(i, n_y - 1)
+                CALL cd_scheme_2(i, 2_IKind)
+                CALL cd_scheme_2(i, INT(n_y - 1, IKind))
             END DO
             !$OMP END DO
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j)
+            !$OMP DO SCHEDULE(DYNAMIC, 10) PRIVATE(j)
             DO j = 3, n_y-2
-                CALL cd_scheme_2(2, j)
-                CALL cd_scheme_2(n_x-1, j)
+                CALL cd_scheme_2(2_IKind, j)
+                CALL cd_scheme_2(INT(n_x-1, IKind), j)
             END DO
             !$OMP END DO
             
-            ! !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j)
-            ! DO j = 3, n_y-2
-                    
-            !     !Calcul de u
-            !     u_temp(3:n_x-2,j) = u(3:n_x-2,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
-            !     + u(2:n_x-3,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
-            !     + u(3:n_x-2,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
-            !     + u(4:n_x-1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
-            !     + u(3:n_x-2,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
-            !     - u(1:n_x-4,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-            !     - u(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dy) &
-            !     + u(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-            !     + u(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dy)
-                
-            !     !Calcul de v
-            !     v_temp(3:n_x-2,j) = v(3:n_x-2,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
-            !     + v(2:n_x-3,j)*dt*(viscosity/dx**2_RKind + 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
-            !     + v(3:n_x-2,j-1)*dt*(viscosity/dy**2_RKind + 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
-            !     + v(4:n_x-1,j)*dt*(viscosity/dx**2_RKind - 4_RKind*u(3:n_x-2,j)/(6_RKind*dx)) &
-            !     + v(3:n_x-2,j+1)*dt*(viscosity/dy**2_RKind - 4_RKind*v(3:n_x-2,j)/(6_RKind*dy)) &
-            !     - v(1:n_x-4,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-            !     - v(3:n_x-2,j-2)*dt*v(3:n_x-2,j)/(12_RKind*dy) &
-            !     + v(5:n_x-1,j)*dt*u(3:n_x-2,j)/(12_RKind*dx) &
-            !     + v(3:n_x-2,j+2)*dt*v(3:n_x-2,j)/(12_RKind*dy)
-                
-            ! END DO
-            ! !$OMP END DO
-            
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
             DO j = 3, n_y-2
                 DO i = 3, n_x-2
                     
@@ -1487,8 +1469,8 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
             !Schéma centré d'ordre 2 pour les bords
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (space_grid%borders(i, j)/16 >= 0) THEN
@@ -1498,7 +1480,7 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1512,14 +1494,14 @@ CONTAINS
         !Calcul avec scheme centré d'ordre 2
         ELSE IF (scheme == 'CD2') THEN
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     CALL cd_scheme_2(i, j)
                 END DO
             END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1549,12 +1531,12 @@ CONTAINS
     
     IMPLICIT NONE
         
-        !$OMP BARRIER
+        ! $OMP BARRIER
         
         !remplissage de b à chaque itération temporelle, là où A est constant
         CALL fill_b()
         
-        !$OMP BARRIER
+        ! $OMP BARRIER
         
         !resolution de l'equation de poisson avec une méthode itérative
         
@@ -1564,7 +1546,7 @@ CONTAINS
         !CALL steepest_gradient_method()
         !CALL conjugate_gradient_method()
         
-        !$OMP BARRIER
+        ! $OMP BARRIER
         
     END SUBROUTINE compute_pressure
     
@@ -1577,9 +1559,6 @@ CONTAINS
         
         INTEGER(KIND = IKind) :: i, j
         
-        !$OMP BARRIER
-        
-        ! $OMP WORKSHARE
         !$OMP SINGLE
         !Conditions limites
         u(1, :) = setup%u(1)
@@ -1592,9 +1571,8 @@ CONTAINS
         v(:, 1) = setup%v(3)
         v(:, n_y) = setup%v(4)
         !$OMP END SINGLE
-        ! $OMP END WORKSHARE
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1606,14 +1584,14 @@ CONTAINS
         END DO
         !$OMP END DO
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j)
+        !$OMP DO SCHEDULE(DYNAMIC, 10) PRIVATE(j)
         DO j = 2, n_y-1
             u(2:n_x-1, j) = u_temp(2:n_x-1, j) - ((p(3:n_x, j) - p(1:n_x-2, j))/(2.0_RKind*dx))*dt/density
             v(2:n_x-1, j) = v_temp(2:n_x-1, j) - ((p(2:n_x-1, j+1) - p(2:n_x-1, j-1))/(2.0_RKind*dy))*dt/density
         END DO
         !$OMP END DO
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) COLLAPSE(2)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
         DO j = 2, n_y-1
             DO i = 2, n_x-1
                 IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1644,61 +1622,54 @@ CONTAINS
         ALLOCATE(u_temp(n_x, n_y))
         ALLOCATE(v_temp(n_x, n_y))
         
-        CALL omp_set_num_threads(8)
+        IF ((num_threads > omp_get_num_procs()) .OR. (num_threads <= 0)) THEN
+            PRINT*, 'ERREUR, VEUILLEZ RENTREZ UN NOMBRE DE THREADS CORRECT'
+            STOP
+        ELSE 
+            !$ CALL omp_set_num_threads(num_threads)
+        END IF
         !$OMP PARALLEL DEFAULT(SHARED)
         
         !Boucle temporelle du calcul
         DO WHILE ((last_iteration .EQV. .FALSE.) .AND. (i < NMax))
-            
-            !$OMP BARRIER
-            
+                        
             CALL compute_time_step()
-            
-            !$OMP BARRIER
             
             IF (t + dt > t_f) THEN
                 last_iteration = .TRUE.
                 EXIT
             END IF
             
-            !$OMP BARRIER
             
             !$OMP SINGLE
             PRINT*, 'dt = ', dt
             !$OMP END SINGLE
             
-            !$OMP BARRIER
             
             !appelle le calcul pour cette itération
             CALL speed_guess()
             
-            !$OMP BARRIER
             
             CALL compute_pressure()
             
-            !$OMP BARRIER
             
             !$OMP SINGLE
             IF (i == 0) THEN
                 mean_iteration = mean_iteration + mean_iteration_loc
             END IF
-            !$OMP END SINGLE
-            
-            CALL adjust_speed()
-            
-            !$OMP BARRIER
-            
-            !$OMP SINGLE
+
             i = i + 1
             t = t + dt
             !$OMP END SINGLE
             
+            CALL adjust_speed()
+            
+            !$OMP SINGLE
             !écrit dans un fichier toute les frames
             IF (MOD(i, frame) == 0) THEN
                 CALL write_output_file(i)
             END IF
-            
-            !$OMP SINGLE
+
             PRINT*, 't = ', t
             PRINT*, '-------------------'
             !$OMP END SINGLE
@@ -1706,6 +1677,8 @@ CONTAINS
         END DO
         
         !$OMP END PARALLEL
+        
+        CALL write_output_file(i)
         
         DEALLOCATE(u_temp)
         DEALLOCATE(v_temp)
@@ -1722,7 +1695,7 @@ USE global
 
 IMPLICIT NONE
     
-    REAL(KIND = RKIND) :: time1, time2, mean_time
+    REAL(KIND = RKIND) :: time1, time2, mean_time, start_init, end_init
     INTEGER, DIMENSION(5) :: mesh_size
     INTEGER :: i, j, nb_tests
     CHARACTER(LEN = StrLen) :: name
@@ -1806,7 +1779,10 @@ IMPLICIT NONE
     name = 'input.dat'
     CALL read_input_file(name)
     
+
+    CALL CPU_TIME(start_init)
     CALL initialisation()
+    CALL CPU_TIME(end_init)
     
     CALL resolution_loop()
     
@@ -1831,6 +1807,7 @@ IMPLICIT NONE
     
     CALL CPU_TIME(time2)
     
+    PRINT*, 'temps d initialisation = ', end_init - start_init
     PRINT*, 'temps de resolution = ', time2 - time1
     
 END PROGRAM main
