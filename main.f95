@@ -101,6 +101,9 @@ IMPLICIT NONE
     !Variables pour le benchmark
     REAL(KIND = RKIND) :: mean_iteration, mean_iteration_loc
     
+    !choix du nombre de threads à utiliser
+    INTEGER(KIND = IKIND) :: num_threads
+    
 CONTAINS
     
 
@@ -115,6 +118,12 @@ CONTAINS
         
         !Saut des deux premieres lignes
         READ(10, *)
+        READ(10, *)
+        
+        !Nombre de threads à utiliser
+        READ(10, *)
+        READ(10, *) num_threads
+        
         READ(10, *)
         
         !Taille du maillage spatial
@@ -636,8 +645,6 @@ CONTAINS
 
         !On cherche le dt le plus contraignant, càd le plus petit
 
-        !$OMP BARRIER
-        
         !$OMP SINGLE
         !initialisation du min en utilisant la condition du fourrier
         dt_min = fo/viscosity*dx**2
@@ -680,7 +687,7 @@ CONTAINS
         k_max = n_x*n_y
         !$OMP END SINGLE
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j, k)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j, k) COLLAPSE(2)
         DO j = 1, n_y
             DO i = 1, n_x
             
@@ -716,19 +723,9 @@ CONTAINS
         INTEGER(KIND = IKIND) :: vec_size = 0, i
         REAL(KIND = RKIND) :: norm
         
-        !$OMP SINGLE
         vec_size = SIZE(vec, 1)
-        !$OMP END SINGLE
-        
-        ! $OMP WORKSHARE
-        !$OMP SINGLE
         norm = SUM(vec(:)**2_RKind)
-        !$OMP END SINGLE
-        ! $OMP END WORKSHARE
-        
-        !$OMP SINGLE
         norm = SQRT(norm)
-        !$OMP END SINGLE
         
     END SUBROUTINE norm_2
     
@@ -741,7 +738,6 @@ CONTAINS
         REAL(KIND = RKind) :: integral
         INTEGER(KIND = IKIND) :: i, j
         
-        !$OMP BARRIER
         integral = 0_RKIND
         !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j) REDUCTION(+:integral)
         DO i = 1, n_x
@@ -789,9 +785,7 @@ CONTAINS
         REAL(KIND = RKind) :: upper_norm = 1, lower_norm = 1, integral = 0
         INTEGER(KIND = RKind) :: i, j, k_max = 0, iteration = 0
         
-        !$OMP BARRIER
-        
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
         !Tentative initiale
         DO j = 1, n_y
             DO i = 1, n_x
@@ -829,7 +823,7 @@ CONTAINS
             p_vec_temp(:) = p_vec(:)
             !$OMP END SINGLE
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j)
             DO i = 1, k_max
                 IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
                     p_vec(i) = p_vec_temp(i) - residual(i)/a_opti(i, 3)
@@ -841,19 +835,13 @@ CONTAINS
             
             !$OMP BARRIER
             
+            !$OMP SINGLE
             CALL norm_2(p_vec, lower_norm)
             
-            !$OMP BARRIER
-            
-            !$OMP SINGLE
             p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
-            !$OMP END SINGLE
             
             CALL norm_2(p_vec_temp, upper_norm)
             
-            !$OMP BARRIER
-            
-            !$OMP SINGLE
             !Calcul du résidu
             residual(:) = - b(:)
             
@@ -1310,9 +1298,6 @@ CONTAINS
         !permet de déterminer la direction du upwind (1 si backward, 0 sinon)
         INTEGER(KIND = IKIND) :: upwind_x, upwind_y
         
-        !$OMP BARRIER
-        
-        ! $OMP WORKSHARE
         !$OMP SINGLE
         !Conditions limites
         u_temp(1, :) = setup%u(1)
@@ -1325,9 +1310,8 @@ CONTAINS
         v_temp(:, 1) = setup%v(3)
         v_temp(:, n_y) = setup%v(4)
         !$OMP END SINGLE
-        ! $OMP END WORKSHARE
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1344,7 +1328,7 @@ CONTAINS
         !Calcul avec scheme régressif upwind d'ordre 1
         IF (scheme == 'UR1') THEN
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j, upwind_x, upwind_y)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j, upwind_x, upwind_y) COLLAPSE(2)
             !calcul du n+1
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
@@ -1385,20 +1369,20 @@ CONTAINS
         !Calcul avec scheme centré d'ordre 4
         ELSE IF (scheme == 'CD4') THEN
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i)
+            !$OMP DO SCHEDULE(DYNAMIC, 10) PRIVATE(i)
             DO i = 2, n_x-1
                 CALL cd_scheme_2(i, 2)
                 CALL cd_scheme_2(i, n_y - 1)
             END DO
             !$OMP END DO
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j)
+            !$OMP DO SCHEDULE(DYNAMIC, 10) PRIVATE(j)
             DO j = 3, n_y-2
                 CALL cd_scheme_2(2, j)
                 CALL cd_scheme_2(n_x-1, j)
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j)
+            !$OMP DO SCHEDULE(DYNAMIC, 10) PRIVATE(j)
             DO j = 3, n_y-2
                     
                 !Calcul de u
@@ -1426,7 +1410,7 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
             !Schéma centré d'ordre 2 pour les bords
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
@@ -1437,7 +1421,7 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1451,14 +1435,14 @@ CONTAINS
         !Calcul avec scheme centré d'ordre 2
         ELSE IF (scheme == 'CD2') THEN
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     CALL cd_scheme_2(i, j)
                 END DO
             END DO
             
-            !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+            !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
             DO j = 2, n_y-1
                 DO i = 2, n_x-1
                     IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1488,8 +1472,6 @@ CONTAINS
     
     IMPLICIT NONE
         
-        !$OMP BARRIER
-        
         !remplissage de b à chaque itération temporelle, là où A est constant
         CALL fill_b()
         
@@ -1516,9 +1498,6 @@ CONTAINS
         
         INTEGER(KIND = IKind) :: i, j
         
-        !$OMP BARRIER
-        
-        ! $OMP WORKSHARE
         !$OMP SINGLE
         !Conditions limites
         u(1, :) = setup%u(1)
@@ -1531,9 +1510,8 @@ CONTAINS
         v(:, 1) = setup%v(3)
         v(:, n_y) = setup%v(4)
         !$OMP END SINGLE
-        ! $OMP END WORKSHARE
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
         DO j = 1, n_y
             DO i = 1, n_x
                 IF (space_grid%borders(i, j) < 0) THEN
@@ -1545,14 +1523,14 @@ CONTAINS
         END DO
         !$OMP END DO
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(j)
+        !$OMP DO SCHEDULE(DYNAMIC, 10) PRIVATE(j)
         DO j = 2, n_y-1
             u(2:n_x-1, j) = u_temp(2:n_x-1, j) - ((p(3:n_x, j) - p(1:n_x-2, j))/(2.0_RKind*dx))*dt/density
             v(2:n_x-1, j) = v_temp(2:n_x-1, j) - ((p(2:n_x-1, j+1) - p(2:n_x-1, j-1))/(2.0_RKind*dy))*dt/density
         END DO
         !$OMP END DO
         
-        !$OMP DO SCHEDULE(DYNAMIC) PRIVATE(i, j)
+        !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
         DO j = 2, n_y-1
             DO i = 2, n_x-1
                 IF (MOD(space_grid%borders(i, j), 16) /= 0) THEN
@@ -1583,7 +1561,12 @@ CONTAINS
         ALLOCATE(u_temp(n_x, n_y))
         ALLOCATE(v_temp(n_x, n_y))
         
-        CALL omp_set_num_threads(1)
+        IF ((num_threads > omp_get_num_procs()) .OR. (num_threads <= 0)) THEN
+            PRINT*, 'ERREUR, VEUILLEZ RENTREZ UN NOMBRE DE THREADS CORRECT'
+            STOP
+        ELSE 
+            !$ CALL omp_set_num_threads(num_threads)
+        END IF
         !$OMP PARALLEL DEFAULT(SHARED)
         
         !Boucle temporelle du calcul
@@ -1662,8 +1645,8 @@ USE global
 IMPLICIT NONE
     
     REAL(KIND = RKIND) :: time1, time2, mean_time
-    INTEGER, DIMENSION(5) :: mesh_size
-    INTEGER :: i, j, nb_tests
+    INTEGER, DIMENSION(5) :: mesh_size, threads_test
+    INTEGER(KIND = IKind) :: i, j, nb_tests, start, end
     CHARACTER(LEN = StrLen) :: name
     
     !Taille des maillages pour le benchmark
@@ -1673,103 +1656,104 @@ IMPLICIT NONE
     mesh_size(4) = 101
     mesh_size(5) = 201
     
+    threads_test(1) = 1
+    threads_test(2) = 2
+    threads_test(3) = 4
+    threads_test(4) = 8
+    
     !nb de calculs à chaque maillage
     nb_tests = 3
     
     
-    ! !Programme de benchmark
-    ! OPEN(12, FILE = 'benchmark/relaxation_short_5.dat')
+    !Programme de benchmark
+    OPEN(12, FILE = 'benchmark/parallel_vec.dat')
     
-    ! DO i = 1, SIZE(mesh_size)
+    DO i = 1, 4
         
-    !     mean_time = 0.0_RKind
-    !     mean_iteration = 0.0_RKIND
+        mean_time = 0.0_RKind
         
-    !     DO j = 1, nb_tests
+        DO j = 1, nb_tests
         
-    !         CALL CPU_TIME(time1)
             
-    !         !récupération des données du problème
-    !         name = 'input.dat'
-    !         CALL read_input_file(name)
+            !récupération des données du problème
+            name = 'input.dat'
+            CALL read_input_file(name)
             
-    !         n_x = mesh_size(i)
-    !         n_y = mesh_size(i)
-    !         t_f = 0.5
+            num_threads = threads_test(i)
             
-    !         CALL initialisation()
+            CALL initialisation()
             
-    !         CALL resolution_loop()
+            CALL SYSTEM_CLOCK(COUNT=start)
+            
+            CALL resolution_loop()
+            
+            CALL SYSTEM_CLOCK(COUNT=end)
             
             
+            DEALLOCATE(space_grid%x)
+            DEALLOCATE(space_grid%y)
+            DEALLOCATE(space_grid%borders)
+            DEALLOCATE(u)
+            DEALLOCATE(v)
+            DEALLOCATE(a_opti)
+            DEALLOCATE(b)
+            DEALLOCATE(p)
+            DEALLOCATE(p_vec)
+            DEALLOCATE(p_vec_temp)
+            DEALLOCATE(residual)
+            DEALLOCATE(space_grid%grad_x)
+            DEALLOCATE(space_grid%grad_y)
+            DEALLOCATE(conjugate)
+            DEALLOCATE(a_mul_conj)
+            DEALLOCATE(a_mul_residual)
             
-    !         DEALLOCATE(space_grid%x)
-    !         DEALLOCATE(space_grid%y)
-    !         DEALLOCATE(space_grid%borders)
-    !         DEALLOCATE(u)
-    !         DEALLOCATE(v)
-    !         DEALLOCATE(a_opti)
-    !         DEALLOCATE(b)
-    !         DEALLOCATE(p)
-    !         DEALLOCATE(p_vec)
-    !         DEALLOCATE(p_vec_temp)
-    !         DEALLOCATE(residual)
-    !         DEALLOCATE(space_grid%grad_x)
-    !         DEALLOCATE(space_grid%grad_y)
-    !         DEALLOCATE(conjugate)
-    !         DEALLOCATE(a_mul_conj)
-    !         DEALLOCATE(a_mul_residual)
+            PRINT*, 'threads = ', num_threads, ' | j = ', j
+            PRINT*, '-------------------------'
             
-    !         CALL CPU_TIME(time2)
+            mean_time = mean_time + end - start
             
-    !         PRINT*, 'mesh = ', n_x, ' | j = ', j
-    !         PRINT*, '-------------------------'
-            
-    !         mean_time = time2 - time1
-            
-    !     END DO
+        END DO
         
-    !     mean_time = mean_time/REAL(nb_tests, RKind)
-    !     mean_iteration = mean_iteration/REAL(nb_tests, RKind)
+        mean_time = mean_time/REAL(nb_tests, RKind)
         
-    !     WRITE(12, *) dx, mean_iteration, mean_time
-    ! END DO
+        WRITE(12, *) num_threads, mean_time
+    END DO
     
-    ! CLOSE(12)
-    
-    
-    !Programme classique
-    CALL CPU_TIME(time1)
-    
-    !récupération des données du problème
-    name = 'input.dat'
-    CALL read_input_file(name)
-    
-    CALL initialisation()
-    
-    CALL resolution_loop()
+    CLOSE(12)
     
     
-    !Désallocation des variables
-    DEALLOCATE(space_grid%x)
-    DEALLOCATE(space_grid%y)
-    DEALLOCATE(space_grid%borders)
-    DEALLOCATE(u)
-    DEALLOCATE(v)
-    DEALLOCATE(a_opti)
-    DEALLOCATE(b)
-    DEALLOCATE(p)
-    DEALLOCATE(p_vec)
-    DEALLOCATE(p_vec_temp)
-    DEALLOCATE(residual)
-    DEALLOCATE(space_grid%grad_x)
-    DEALLOCATE(space_grid%grad_y)
-    DEALLOCATE(conjugate)
-    DEALLOCATE(a_mul_conj)
-    DEALLOCATE(a_mul_residual)
+    ! !Programme classique
+    ! CALL CPU_TIME(time1)
     
-    CALL CPU_TIME(time2)
+    ! !récupération des données du problème
+    ! name = 'input.dat'
+    ! CALL read_input_file(name)
     
-    PRINT*, 'temps de resolution = ', time2 - time1
+    ! CALL initialisation()
+    
+    ! CALL resolution_loop()
+    
+    
+    ! !Désallocation des variables
+    ! DEALLOCATE(space_grid%x)
+    ! DEALLOCATE(space_grid%y)
+    ! DEALLOCATE(space_grid%borders)
+    ! DEALLOCATE(u)
+    ! DEALLOCATE(v)
+    ! DEALLOCATE(a_opti)
+    ! DEALLOCATE(b)
+    ! DEALLOCATE(p)
+    ! DEALLOCATE(p_vec)
+    ! DEALLOCATE(p_vec_temp)
+    ! DEALLOCATE(residual)
+    ! DEALLOCATE(space_grid%grad_x)
+    ! DEALLOCATE(space_grid%grad_y)
+    ! DEALLOCATE(conjugate)
+    ! DEALLOCATE(a_mul_conj)
+    ! DEALLOCATE(a_mul_residual)
+    
+    ! CALL CPU_TIME(time2)
+    
+    ! PRINT*, 'temps de resolution = ', time2 - time1
     
 END PROGRAM main
