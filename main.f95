@@ -10,11 +10,7 @@ IMPLICIT NONE
     !Constante de taille pour le nom des fichiers
     INTEGER, PARAMETER :: StrLen = 40
     
-    
-    
     !-----------------------------------------------------
-    
-    
     
     !Variables d'entree
     
@@ -280,34 +276,6 @@ CONTAINS
         PRINT *, 'Time to write output file : ', end - start
         
     END SUBROUTINE write_output_file
-    
-    
-    !Permet de rapidement tester la valeur de certaines variables
-    SUBROUTINE debug(iteration)
-    IMPLICIT NONE
-        
-        INTEGER(KIND = IKind), INTENT(IN) :: iteration
-        
-        CHARACTER(LEN = StrLen) :: name
-        INTEGER(KIND = RKind) :: i, j
-        
-        WRITE(name, '(I0)') iteration
-        name = 'debug/a_opti_' // TRIM(name) // '.dat'
-        
-        !Ouverture du fichier a ecrire
-        OPEN(11, FILE = name)
-        
-        DO i = 1, n_x*n_y
-            WRITE(11, '(A, I3, A, 5(F7.1))') 'i = ', i, ' | a_opti(i) = ', a_opti(i, :)
-        END DO
-        
-        !Fermeture du fichier
-        CLOSE(11)
-        
-    END SUBROUTINE Debug
-    
-        
-    
     
     !maj à l'Etape 7, 2D
     !subroutine de creation du maillage spatial, contient les coordonnées exactes de chaque pt, en 2D
@@ -787,7 +755,7 @@ CONTAINS
         !Arret forcé de jacobi
         INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
         REAL(KIND = RKind) :: upper_norm = 1, lower_norm = 1, integral = 0
-        INTEGER(KIND = IKind) :: i, j, k_max = 0, iteration = 0, time1 = 0, time2 = 0, time3 = 0, time4 = 0, time5 = 0
+        INTEGER(KIND = IKind) :: i, j, k_max = 0, iteration = 0
         
         ! $OMP BARRIER
         
@@ -802,17 +770,6 @@ CONTAINS
         
         !$OMP SINGLE
         k_max = n_x*n_y
-        
-        ! !Calcul du résidu sous forme vectorisée
-        ! residual(:) = - b(:)
-        
-        ! residual(1:k_max) = residual(1:k_max) + a_opti(1:k_max, 3)*p_vec(1:k_max)
-        ! residual(2:k_max) = residual(2:k_max) + a_opti(2:k_max, 2)*p_vec(1:k_max-1)
-        ! residual(1:k_max-1) = residual(1:k_max-1) + a_opti(1:k_max-1, 4)*p_vec(2:k_max)
-        ! residual(n_x+1:k_max) = residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
-        ! residual(1:k_max-n_x) = residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
-        
-        
         
         lower_norm = 1
         upper_norm = 1
@@ -842,15 +799,10 @@ CONTAINS
         END DO
         !$OMP END DO           
 
-        ! $OMP BARRIER
-        !CALL SYSTEM_CLOCK(COUNT=time1)
-        
         DO WHILE (upper_norm/lower_norm > RTol)
             
             !$OMP SINGLE
             !Amélioration de la solution
-            !CALL SYSTEM_CLOCK(COUNT=time2)
-            
             p_vec_temp(:) = p_vec(:)
             !$OMP END SINGLE
             
@@ -862,10 +814,6 @@ CONTAINS
             END DO
             !$OMP END DO
             
-            !$OMP SINGLE
-            !CALL SYSTEM_CLOCK(COUNT=time3)
-            time5 = time5 + time3 - time2
-            !$OMP END SINGLE
             CALL pressure_integral_correction(integral)
             
             ! $OMP BARRIER
@@ -877,7 +825,6 @@ CONTAINS
             
             CALL norm_2(p_vec_temp, upper_norm)
             !$OMP END SINGLE
-            
             
             !Calcul du résidu
             !$OMP DO SCHEDULE(dynamic, 100) PRIVATE(i)
@@ -899,18 +846,15 @@ CONTAINS
             !$OMP END DO
             
             !$OMP SINGLE
-            
             iteration = iteration + 1
             IF (iteration >= IterationMax) THEN
                 PRINT*, 'Nombre d iteration max de Jacobi atteint (', IterationMax, ' )'
                 STOP
             END IF
-            
             !$OMP END SINGLE
             
         END DO
         
-        !CALL SYSTEM_CLOCK(COUNT=time4)
         
         ! $OMP BARRIER
         
@@ -928,396 +872,9 @@ CONTAINS
         
         !Pour le benchmark
         mean_iteration_loc = iteration
-        !PRINT*, REAL(time5)/REAL(iteration) 
-        !PRINT*, time4-time1
         !$OMP END SINGLE
         
     END SUBROUTINE jacobi_method
-    
-    
-    
-    !Methode de Gauss-Siedel (resolution iterative de systeme lineaire)
-    SUBROUTINE gauss_siedel_method()
-    
-    IMPLICIT NONE
-        
-        !point d'arret de la méthode
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.001
-        !Arret forcé de la méthode
-        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
-        REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
-        
-        !Tentative initiale
-        DO j = 1, n_y
-            DO i = 1, n_x
-                p_vec((j-1)*n_x + i) = p(i, j)
-            END DO
-        END DO
-        
-        k_max = n_x*n_y
-        
-        iteration = 0
-        
-        CALL pressure_integral_correction(integral)
-        
-        lower_norm = 1
-        upper_norm = 1
-        DO WHILE (upper_norm/lower_norm > RTol)
-            
-            !Amélioration de la solution
-            p_vec_temp(:) = p_vec(:)
-            DO i = 1, k_max
-                IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
-                    p_vec(i) = b(i)
-                    IF (i > 1) THEN
-                        p_vec(i) = p_vec(i) - a_opti(i, 2)*p_vec(i-1)
-                    END IF
-                    IF (i > n_x) THEN
-                        p_vec(i) = p_vec(i) - a_opti(i, 1)*p_vec(i-n_x)
-                    END IF
-                    IF (i < k_max) THEN
-                        p_vec(i) = p_vec(i) - a_opti(i, 4)*p_vec(i+1)
-                    END IF
-                    IF (i <= k_max-n_x) THEN
-                        p_vec(i) = p_vec(i) - a_opti(i, 5)*p_vec(i+n_x)
-                    END IF
-                    p_vec(i) = p_vec(i)/a_opti(i, 3)
-                END IF
-            END DO
-            
-            CALL pressure_integral_correction(integral)
-            
-            CALL norm_2(p_vec, lower_norm)
-            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
-            CALL norm_2(p_vec_temp, upper_norm)
-            
-            iteration = iteration + 1
-            IF (iteration >= IterationMax) THEN
-                PRINT*, 'Nombre d iteration max de Gauss-Siedel atteint (', IterationMax, ' )'
-                STOP
-            END IF
-            
-        END DO
-        
-        !Récupération de la solution dans le tableau 2D
-        DO j = 1, n_y
-            DO i = 1, n_x
-                p(i, j) = p_vec((j-1)*n_x+i)
-            END DO
-        END DO
-        
-        PRINT*, 'Gauss-Siedel :', iteration, ' iterations | integrale(p) = ', integral
-        
-        !Pour le benchmark
-        mean_iteration_loc = iteration
-        
-    END SUBROUTINE gauss_siedel_method
-    
-    
-    
-    !Methode de Surrelaxation (resolution iterative de systeme lineaire)
-    SUBROUTINE successive_over_relaxation_method()
-    
-    IMPLICIT NONE
-        
-        !point d'arret de la méthode
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.001
-        !Arret forcé de la méthode
-        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
-        REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
-        REAL(KIND = RKind) :: sor_coeff
-        
-        !Coefficient de surrelaxation (successive over-relaxation)
-        !Choix arbitraire dépendant du problème traité (0<coeff<2)
-        sor_coeff = 1.3
-        
-        !Tentative initiale
-        DO j = 1, n_y
-            DO i = 1, n_x
-                p_vec((j-1)*n_x + i) = p(i, j)
-            END DO
-        END DO
-        
-        k_max = n_x*n_y
-        
-        iteration = 0
-        
-        CALL pressure_integral_correction(integral)
-        
-        lower_norm = 1
-        upper_norm = 1
-        DO WHILE (upper_norm/lower_norm > RTol)
-            
-            !Amélioration de la solution
-            p_vec_temp(:) = p_vec(:)
-            DO i = 1, k_max
-                IF (ABS(a_opti(i, 3)) > 1E-15_RKind) THEN
-                    p_vec(i) = b(i)
-                    IF (i > 1) THEN
-                        p_vec(i) = p_vec(i) - a_opti(i, 2)*p_vec(i-1)
-                    END IF
-                    IF (i > n_x) THEN
-                        p_vec(i) = p_vec(i) - a_opti(i, 1)*p_vec(i-n_x)
-                    END IF
-                    IF (i < k_max) THEN
-                        p_vec(i) = p_vec(i) - a_opti(i, 4)*p_vec(i+1)
-                    END IF
-                    IF (i <= k_max-n_x) THEN
-                        p_vec(i) = p_vec(i) - a_opti(i, 5)*p_vec(i+n_x)
-                    END IF
-                    p_vec(i) = (1_RKind - sor_coeff)*p_vec_temp(i) + sor_coeff*p_vec(i)/a_opti(i, 3)
-                END IF
-            END DO
-            
-            CALL pressure_integral_correction(integral)
-            
-            CALL norm_2(p_vec, lower_norm)
-            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
-            CALL norm_2(p_vec_temp, upper_norm)
-            
-            iteration = iteration + 1
-            IF (iteration >= IterationMax) THEN
-                PRINT*, 'Nombre d iteration max de Surrelaxation atteint (', IterationMax, ' )'
-                STOP
-            END IF
-            
-        END DO
-        
-        !Récupération de la solution sous forme 2D
-        DO j = 1, n_y
-            DO i = 1, n_x
-                p(i, j) = p_vec((j-1)*n_x+i)
-            END DO
-        END DO
-        
-        PRINT*, 'Surrelaxation :', iteration, ' iterations | integrale(p) = ', integral
-        
-        !Benchmark
-        mean_iteration_loc = iteration
-        
-    END SUBROUTINE successive_over_relaxation_method
-    
-    
-    
-    !Methode de la descente du gradient (resolution iterative de systeme lineaire)
-    SUBROUTINE steepest_gradient_method()
-    
-    IMPLICIT NONE
-        
-        !point d'arret de la méthode
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.001
-        !Arret forcé de la méthode
-        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
-        REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral, r_norm0, r_norm
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
-        REAL(KIND = RKind) :: alpha, beta
-        
-        !CALL CPU_TIME(time1)
-        
-        !Tentative initiale
-        DO j = 1, n_y
-            DO i = 1, n_x
-                p_vec((j-1)*n_x + i) = p(i, j)
-            END DO
-        END DO
-        
-        k_max = n_x*n_y
-        
-        
-        iteration = 0
-        
-        CALL pressure_integral_correction(integral)
-        
-        !Calcul du résidu
-        residual(:) = b(:)
-        residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
-        residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
-        residual(1:k_max-1) = residual(1:k_max-1) - a_opti(1:k_max-1, 4)*p_vec(2:k_max)
-        residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
-        residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
-        
-        !Choix de la première direction
-        conjugate(:) = residual(:)
-        
-        lower_norm = 1
-        upper_norm = 1
-        DO WHILE (upper_norm/lower_norm > RTol)
-            
-            p_vec_temp(:) = p_vec(:)
-            
-            !A(:,:)*conjugué(:)
-            a_mul_conj(:) = 0.0_RKind
-            a_mul_conj(1:k_max) = a_mul_conj(1:k_max) + a_opti(1:k_max, 3)*conjugate(1:k_max)
-            a_mul_conj(2:k_max) = a_mul_conj(2:k_max) + a_opti(2:k_max, 2)*conjugate(1:k_max-1)
-            a_mul_conj(1:k_max-1) = a_mul_conj(1:k_max-1) + a_opti(1:k_max-1, 4)*conjugate(2:k_max)
-            a_mul_conj(n_x+1:k_max) = a_mul_conj(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*conjugate(1:k_max-n_x)
-            a_mul_conj(1:k_max-n_x) = a_mul_conj(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*conjugate(1+n_x:k_max)
-            
-            !Choix de la distance à parcourir dans la direction de conjugate
-            alpha = DOT_PRODUCT(conjugate, residual)/DOT_PRODUCT(conjugate, a_mul_conj)
-            !Mise à jour du vecteur solution
-            p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
-            
-            !Calcul du résidu
-            residual(:) = b(:)
-            residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
-            residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
-            residual(1:k_max-1) = residual(1:k_max-1) - a_opti(1:k_max-1, 4)*p_vec(2:k_max)
-            residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
-            residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
-            
-            !Choix de la nouvelle direction
-            conjugate(:) = residual(:)
-            
-            CALL pressure_integral_correction(integral)
-            
-            CALL norm_2(p_vec, lower_norm)
-            p_vec_temp(:) = p_vec(:)-p_vec_temp(:)
-            CALL norm_2(p_vec_temp, upper_norm)
-            
-            iteration = iteration + 1
-            IF (iteration >= IterationMax) THEN
-                PRINT*, 'Nombre d iteration max du Gradient conjugue atteint (', IterationMax, ' )'
-                STOP
-            END IF
-            
-        END DO
-        
-        !Récupération du vecteur solution
-        DO j = 1, n_y
-            DO i = 1, n_x
-                p(i, j) = p_vec((j-1)*n_x+i)
-            END DO
-        END DO
-        
-        PRINT*, 'Descente du gradient :', iteration, ' iterations | integrale(p) = ', integral
-        
-        !Benchmark
-        mean_iteration_loc = iteration
-        
-    END SUBROUTINE steepest_gradient_method
-    
-    
-    
-    !Methode du gradient conjugué (méthode itérative)
-    SUBROUTINE conjugate_gradient_method()
-    
-    IMPLICIT NONE
-        
-        !point d'arret de la méthode
-        REAL(KIND = RKind), PARAMETER :: RTol = 0.001
-        !Arret forcé de la méthode
-        INTEGER(KIND = IKind), PARAMETER :: IterationMax = 20000
-        REAL(KIND = RKind) :: upper_norm, lower_norm, time1, time2, convergence, integral, r_norm0, r_norm
-        INTEGER(KIND = RKind) :: i, j, k_max, iteration
-        REAL(KIND = RKind) :: alpha, beta, r_r
-        
-        !Tentative initiale
-        DO j = 1, n_y
-            DO i = 1, n_x
-                p_vec((j-1)*n_x + i) = p(i, j)
-            END DO
-        END DO
-        
-        k_max = n_x*n_y
-        
-        
-        iteration = 0
-        
-        !CALL pressure_integral_correction(integral)
-        
-        !Calcul du résidu
-        residual(:) = b(:)
-        residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
-        residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
-        residual(1:k_max-1) = residual(1:k_max-1) - a_opti(1:k_max-1, 4)*p_vec(2:k_max)
-        residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
-        residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
-        
-        !Choix de la direction
-        conjugate(:) = residual(:)
-        
-        lower_norm = 1
-        upper_norm = 1
-        
-        !CALL norm_2(residual, upper_norm)
-        !lower_norm = upper_norm
-        
-        DO WHILE (upper_norm/lower_norm > RTol)
-            
-            p_vec_temp(:) = p_vec(:)
-            
-            !A(:,:)*conjugué(:)
-            a_mul_conj(:) = 0.0_RKind
-            a_mul_conj(1:k_max) = a_mul_conj(1:k_max) + a_opti(1:k_max, 3)*conjugate(1:k_max)
-            a_mul_conj(2:k_max) = a_mul_conj(2:k_max) + a_opti(2:k_max, 2)*conjugate(1:k_max-1)
-            a_mul_conj(1:k_max-1) = a_mul_conj(1:k_max-1) + a_opti(1:k_max-1, 4)*conjugate(2:k_max)
-            a_mul_conj(n_x+1:k_max) = a_mul_conj(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*conjugate(1:k_max-n_x)
-            a_mul_conj(1:k_max-n_x) = a_mul_conj(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*conjugate(1+n_x:k_max)
-            
-            
-            !Choix de la distance, la simplification classique de ce calcul ne fonctionne pas ici à cause des modifications liées à l'intégrale nulle
-            alpha = DOT_PRODUCT(conjugate, residual)/DOT_PRODUCT(conjugate, a_mul_conj)
-            !Mise à jour du vecteur solution
-            p_vec(:) = p_vec_temp(:) + alpha*conjugate(:)
-            
-            !Calcul du résidu
-            residual(:) = b(:)
-            residual(1:k_max) = residual(1:k_max) - a_opti(1:k_max, 3)*p_vec(1:k_max)
-            residual(2:k_max) = residual(2:k_max) - a_opti(2:k_max, 2)*p_vec(1:k_max-1)
-            residual(1:k_max-1) = residual(1:k_max-1) - a_opti(1:k_max-1, 4)*p_vec(2:k_max)
-            residual(n_x+1:k_max) = residual(n_x+1:k_max) - a_opti(n_x+1:k_max, 1)*p_vec(1:k_max-n_x)
-            residual(1:k_max-n_x) = residual(1:k_max-n_x) - a_opti(1:k_max-n_x, 5)*p_vec(1+n_x:k_max)
-            
-            
-            a_mul_residual(:) = 0.0_RKind
-            a_mul_residual(1:k_max) = a_mul_residual(1:k_max) + a_opti(1:k_max, 3)*residual(1:k_max)
-            a_mul_residual(2:k_max) = a_mul_residual(2:k_max) + a_opti(2:k_max, 2)*residual(1:k_max-1)
-            a_mul_residual(1:k_max-1) = a_mul_residual(1:k_max-1) + a_opti(1:k_max-1, 4)*residual(2:k_max)
-            a_mul_residual(n_x+1:k_max) = a_mul_residual(n_x+1:k_max) + a_opti(n_x+1:k_max, 1)*residual(1:k_max-n_x)
-            a_mul_residual(1:k_max-n_x) = a_mul_residual(1:k_max-n_x) + a_opti(1:k_max-n_x, 5)*residual(1+n_x:k_max)
-            
-            !Choix du décalage vis-à-vis du résidu
-            !La simplification classique de ce calcul ne fonctionne pas ici à cause des modifications liées à l'intégrale nulle
-            beta = DOT_PRODUCT(residual, a_mul_conj)/DOT_PRODUCT(conjugate, a_mul_conj)
-            !beta = -DOT_PRODUCT(conjugate, p_vec_temp(:))/DOT_PRODUCT(conjugate, a_mul_conj)
-            !Mise à jour de la direction
-            conjugate(:) = residual(:) + beta*conjugate(:)
-            
-            !Rectification via l'intégrale
-            CALL pressure_integral_correction(integral)
-            
-            !CALL norm_2(residual, upper_norm)
-            !PRINT*, upper_norm
-            
-            CALL norm_2(p_vec, lower_norm)
-            a_mul_residual(:) = p_vec(:)-p_vec_temp(:)
-            CALL norm_2(a_mul_residual, upper_norm)
-            
-            iteration = iteration + 1
-            IF (iteration >= IterationMax) THEN
-                PRINT*, 'Nombre d iteration max du Gradient conjugue atteint (', IterationMax, ' )'
-                STOP
-            END IF
-            
-        END DO
-        
-        !Récupération de la pression sous la forme d'un tableau 2D
-        DO j = 1, n_y
-            DO i = 1, n_x
-                p(i, j) = p_vec((j-1)*n_x+i)
-            END DO
-        END DO
-        
-        PRINT*, 'Gradient conjugue :', iteration, ' iterations | integrale(p) = ', integral
-        
-        !Benchmark
-        mean_iteration_loc = iteration
-        
-    END SUBROUTINE conjugate_gradient_method
-    
     
     !Schéma centré d'ordre 2 pour l'estimation de la vitesse
     SUBROUTINE cd_scheme_2(i, j)
@@ -1326,6 +883,7 @@ CONTAINS
         
         INTEGER(KIND = IKind), INTENT(IN) :: i, j
         
+        !Calcul de u
         u_temp(i,j) = u(i,j)*(1.0 - 2.0*viscosity*dt*(1.0_RKind/dx**2_RKind + 1.0_RKind/dy**2_RKind)) &
         + u(i-1,j)*dt*(viscosity/dx**2_RKind + u(i,j)/(2_RKind*dx)) &
         + u(i,j-1)*dt*(viscosity/dy**2_RKind + v(i,j)/(2_RKind*dy)) &
@@ -1354,7 +912,6 @@ CONTAINS
 
         ! $OMP BARRIER
         
-        ! $OMP WORKSHARE
         !$OMP SINGLE
         !Conditions limites
         u_temp(1, :) = setup%u(1)
@@ -1367,7 +924,6 @@ CONTAINS
         v_temp(:, 1) = setup%v(3)
         v_temp(:, n_y) = setup%v(4)
         !$OMP END SINGLE
-        ! $OMP END WORKSHARE
         
         !$OMP DO SCHEDULE(DYNAMIC, 100) PRIVATE(i, j) COLLAPSE(2)
         DO j = 1, n_y
@@ -1531,21 +1087,11 @@ CONTAINS
     
     IMPLICIT NONE
         
-        ! $OMP BARRIER
-        
         !remplissage de b à chaque itération temporelle, là où A est constant
         CALL fill_b()
         
-        ! $OMP BARRIER
-        
         !resolution de l'equation de poisson avec une méthode itérative
-        
         CALL jacobi_method()
-        !CALL gauss_siedel_method()
-        !CALL successive_over_relaxation_method()
-        !CALL steepest_gradient_method()
-        !CALL conjugate_gradient_method()
-        
         ! $OMP BARRIER
         
     END SUBROUTINE compute_pressure
@@ -1717,98 +1263,98 @@ IMPLICIT NONE
     nb_tests = 3
     
     
-    !Programme de benchmark
-    OPEN(12, FILE = 'benchmark/parallel/parallel_novec.txt')
+    ! !Programme de benchmark
+    ! OPEN(12, FILE = 'benchmark/parallel/parallel_novec.txt')
     
-    DO i = 1, SIZE(threads_test)
+    ! DO i = 1, SIZE(threads_test)
         
-        mean_time = 0.0_RKind
+    !     mean_time = 0.0_RKind
         
-        DO j = 1, nb_tests
+    !     DO j = 1, nb_tests
         
             
-            !récupération des données du problème
-            name = 'input.dat'
-            CALL read_input_file(name)
+    !         !récupération des données du problème
+    !         name = 'input.dat'
+    !         CALL read_input_file(name)
             
-            num_threads = threads_test(i)
+    !         num_threads = threads_test(i)
             
-            CALL initialisation()
+    !         CALL initialisation()
             
-            CALL SYSTEM_CLOCK(start)
+    !         CALL SYSTEM_CLOCK(start)
             
-            CALL resolution_loop()
+    !         CALL resolution_loop()
             
-            CALL SYSTEM_CLOCK(end)
+    !         CALL SYSTEM_CLOCK(end)
             
-            DEALLOCATE(space_grid%x)
-            DEALLOCATE(space_grid%y)
-            DEALLOCATE(space_grid%borders)
-            DEALLOCATE(u)
-            DEALLOCATE(v)
-            DEALLOCATE(a_opti)
-            DEALLOCATE(b)
-            DEALLOCATE(p)
-            DEALLOCATE(p_vec)
-            DEALLOCATE(p_vec_temp)
-            DEALLOCATE(residual)
-            DEALLOCATE(space_grid%grad_x)
-            DEALLOCATE(space_grid%grad_y)
-            DEALLOCATE(conjugate)
-            DEALLOCATE(a_mul_conj)
-            DEALLOCATE(a_mul_residual)
+    !         DEALLOCATE(space_grid%x)
+    !         DEALLOCATE(space_grid%y)
+    !         DEALLOCATE(space_grid%borders)
+    !         DEALLOCATE(u)
+    !         DEALLOCATE(v)
+    !         DEALLOCATE(a_opti)
+    !         DEALLOCATE(b)
+    !         DEALLOCATE(p)
+    !         DEALLOCATE(p_vec)
+    !         DEALLOCATE(p_vec_temp)
+    !         DEALLOCATE(residual)
+    !         DEALLOCATE(space_grid%grad_x)
+    !         DEALLOCATE(space_grid%grad_y)
+    !         DEALLOCATE(conjugate)
+    !         DEALLOCATE(a_mul_conj)
+    !         DEALLOCATE(a_mul_residual)
             
-            PRINT*, 'threads ', num_threads, ' | j = ', j
-            PRINT*, '-------------------------'
+    !         PRINT*, 'threads ', num_threads, ' | j = ', j
+    !         PRINT*, '-------------------------'
             
-            mean_time = mean_time + end - start
+    !         mean_time = mean_time + end - start
             
-        END DO
+    !     END DO
         
-        mean_time = mean_time/REAL(nb_tests, RKind)
+    !     mean_time = mean_time/REAL(nb_tests, RKind)
         
-        WRITE(12, *) num_threads, mean_time
-    END DO
+    !     WRITE(12, *) num_threads, mean_time
+    ! END DO
     
-    CLOSE(12)
+    ! CLOSE(12)
     
     
-    ! !Programme classique
-    ! CALL CPU_TIME(time1)
+    !Programme classique
+    CALL CPU_TIME(time1)
     
-    ! !récupération des données du problème
-    ! name = 'input.dat'
-    ! CALL read_input_file(name)
+    !récupération des données du problème
+    name = 'input.dat'
+    CALL read_input_file(name)
     
 
-    ! CALL CPU_TIME(start_init)
-    ! CALL initialisation()
-    ! CALL CPU_TIME(end_init)
+    CALL CPU_TIME(start_init)
+    CALL initialisation()
+    CALL CPU_TIME(end_init)
     
-    ! CALL resolution_loop()
+    CALL resolution_loop()
     
     
-    ! !Désallocation des variables
-    ! DEALLOCATE(space_grid%x)
-    ! DEALLOCATE(space_grid%y)
-    ! DEALLOCATE(space_grid%borders)
-    ! DEALLOCATE(u)
-    ! DEALLOCATE(v)
-    ! DEALLOCATE(a_opti)
-    ! DEALLOCATE(b)
-    ! DEALLOCATE(p)
-    ! DEALLOCATE(p_vec)
-    ! DEALLOCATE(p_vec_temp)
-    ! DEALLOCATE(residual)
-    ! DEALLOCATE(space_grid%grad_x)
-    ! DEALLOCATE(space_grid%grad_y)
-    ! DEALLOCATE(conjugate)
-    ! DEALLOCATE(a_mul_conj)
-    ! DEALLOCATE(a_mul_residual)
+    !Désallocation des variables
+    DEALLOCATE(space_grid%x)
+    DEALLOCATE(space_grid%y)
+    DEALLOCATE(space_grid%borders)
+    DEALLOCATE(u)
+    DEALLOCATE(v)
+    DEALLOCATE(a_opti)
+    DEALLOCATE(b)
+    DEALLOCATE(p)
+    DEALLOCATE(p_vec)
+    DEALLOCATE(p_vec_temp)
+    DEALLOCATE(residual)
+    DEALLOCATE(space_grid%grad_x)
+    DEALLOCATE(space_grid%grad_y)
+    DEALLOCATE(conjugate)
+    DEALLOCATE(a_mul_conj)
+    DEALLOCATE(a_mul_residual)
     
-    ! CALL CPU_TIME(time2)
+    CALL CPU_TIME(time2)
     
-    ! PRINT*, 'temps d initialisation = ', end_init - start_init
-    ! PRINT*, 'temps de resolution = ', time2 - time1
+    PRINT*, 'temps d initialisation = ', end_init - start_init
+    PRINT*, 'temps de cpu resolution = ', time2 - time1
     
 END PROGRAM main
