@@ -1,6 +1,6 @@
 a.out
 global.mod
 *.png
-output/
+output/*
 a.exe
 /debug
