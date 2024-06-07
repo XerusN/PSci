@@ -701,18 +701,6 @@ CONTAINS
     
     
     
-    ! VOIR AVEC LE PROF SI TEMPS, probleme d'allocation
-    ! FUNCTION a_opti_mul(vec)
-    
-    ! IMPLICIT NONE
-        
-    !     REAL(KIND = RKind), DIMENSION(:), ALLOCATABLE, INTENT(OUT) :: a_opti_mul
-        
-        
-    ! END FUNCTION a_mul
-    
-    
-    
     !Methode de Jacobi (resolution iterative de systeme lineaire)
     SUBROUTINE jacobi_method()
     
